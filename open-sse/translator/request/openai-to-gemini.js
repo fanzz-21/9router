@@ -20,6 +20,7 @@ import {
 } from "../formats/gemini.js";
 import { deriveSessionId, toNumericSessionId } from "../../utils/sessionManager.js";
 import { ROLE, GEMINI_ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.js";
+import { isGemini4Model } from "../../providers/capabilities.js";
 
 // Sanitize function names for Gemini API.
 // Gemini requires: starts with [a-zA-Z_], followed by [a-zA-Z0-9_.:\-], max 64 chars.
@@ -41,7 +42,7 @@ function sanitizeGeminiFunctionName(name) {
  *
  * Gemini validates functionCall id uniqueness across the WHOLE history and
  * answers 400 INVALID_ARGUMENT otherwise, but an OpenAI tool_call_id is only
- * unique within its own assistant turn - a long agent session can replay the
+ * unique within its own assistant turn — a long agent session can replay the
  * same id in a later turn (#4532).
  *
  * Uniqueness is per OCCURRENCE, not per id: two different calls that share an id
@@ -81,14 +82,15 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
     safetySettings: DEFAULT_SAFETY_SETTINGS
   };
 
-  // Generation config
-  if (body.temperature !== undefined) {
+  // Generation config — Gemini 4 removed the sampling params, forwarding them fails the request
+  const allowSampling = !isGemini4Model(model);
+  if (allowSampling && body.temperature !== undefined) {
     result.generationConfig.temperature = body.temperature;
   }
-  if (body.top_p !== undefined) {
+  if (allowSampling && body.top_p !== undefined) {
     result.generationConfig.topP = body.top_p;
   }
-  if (body.top_k !== undefined) {
+  if (allowSampling && body.top_k !== undefined) {
     result.generationConfig.topK = body.top_k;
   }
   if (body.max_tokens !== undefined) {
@@ -304,7 +306,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
     }
   }
 
-  result.contents = normalizeGeminiContents(result.contents);
+  result.contents = normalizeGeminiContents(result.contents, model);
   return result;
 }
 
@@ -383,7 +385,7 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
     userAgent: "antigravity",
     requestId: `agent-${generateUUID()}`,
     // NOTE: official Antigravity client omits `requestType` on the agent (chat)
-    // path - see the note in wrapInCloudCodeEnvelope() above.
+    // path — see the note in wrapInCloudCodeEnvelope() above.
     request: {
       sessionId: toNumericSessionId(credentials?._clientSessionId) || deriveSessionId(credentials?.email || credentials?.connectionId),
       contents: [],
@@ -439,7 +441,7 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
             if (Array.isArray(content)) {
               content = content.map(c => c.type === CLAUDE_BLOCK.TEXT ? c.text : JSON.stringify(c)).join("\n");
             }
-            // Resolve the original tool name from the id - Gemini requires it to match the functionCall name
+            // Resolve the original tool name from the id — Gemini requires it to match the functionCall name
             const resolvedName = toolUseIdToName[block.tool_use_id]
               ? sanitizeGeminiFunctionName(toolUseIdToName[block.tool_use_id])
               : "tool";
@@ -502,12 +504,12 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
     envelope.request.systemInstruction = { role: GEMINI_ROLE.USER, parts: systemParts };
   }
 
-  envelope.request.contents = normalizeGeminiContents(envelope.request.contents);
+  envelope.request.contents = normalizeGeminiContents(envelope.request.contents, model);
   return envelope;
 }
 
 // Detect if model should use Claude backend in Antigravity
-// Claude models have specific ID patterns - more reliable than caps at routing level
+// Claude models have specific ID patterns — more reliable than caps at routing level
 function isClaudeModel(model) {
   return model.toLowerCase().includes("claude");
 }

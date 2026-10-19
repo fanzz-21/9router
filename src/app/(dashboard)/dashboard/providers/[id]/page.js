@@ -12,6 +12,7 @@ import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS,
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { useTaskStore } from "@/store/taskStore";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { translate } from "@/i18n/runtime";
 import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
@@ -26,6 +27,8 @@ import AddCustomModelModal from "./AddCustomModelModal";
 import BulkImportCodexModal from "./BulkImportCodexModal";
 import BulkImportGrokCliModal from "./BulkImportGrokCliModal";
 import CustomConfigCard from "./CustomConfigCard";
+import AutoPingScheduleModal from "./AutoPingScheduleModal";
+import { getScheduleSlotLabels } from "@/shared/services/quotaPingSchedule";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
 
@@ -72,7 +75,8 @@ export default function ProviderDetailPage() {
   const [providerStrategy, setProviderStrategy] = useState(null);
   const [providerStickyLimit, setProviderStickyLimit] = useState("");
   const [thinkingMode, setThinkingMode] = useState("auto");
-  const [autoPing, setAutoPing] = useState({ enabled: false, connections: {} });
+  const [autoPing, setAutoPing] = useState({ enabled: false, connections: {}, schedules: {} });
+  const [scheduleConnection, setScheduleConnection] = useState(null);
   const [suggestedModels, setSuggestedModels] = useState([]);
   const [suggestedModelsError, setSuggestedModelsError] = useState(null);
   const [liveModels, setLiveModels] = useState([]);
@@ -348,7 +352,7 @@ export default function ProviderDetailPage() {
       setThinkingMode(thinkingCfg.mode || "auto");
       const autoPingSettingsKey = AUTO_PING_SETTINGS_KEYS[providerId];
       const apCfg = autoPingSettingsKey ? settingsData[autoPingSettingsKey] || {} : {};
-      setAutoPing({ enabled: apCfg.enabled === true, connections: apCfg.connections || {} });
+      setAutoPing({ enabled: apCfg.enabled === true, connections: apCfg.connections || {}, schedules: apCfg.schedules || {} });
       if (nodesRes.ok) {
         let node = (nodesData.nodes || []).find((entry) => entry.id === providerId) || null;
 
@@ -477,8 +481,12 @@ export default function ProviderDetailPage() {
     }
   };
 
-  const handleAutoPingConnection = (connectionId, on) => {
-    saveAutoPing({ ...autoPing, connections: { ...autoPing.connections, [connectionId]: on } });
+  const handleSaveAutoPing = (connectionId, { reactive, schedule }) => {
+    saveAutoPing({
+      ...autoPing,
+      connections: { ...autoPing.connections, [connectionId]: reactive },
+      schedules: { ...autoPing.schedules, [connectionId]: schedule },
+    });
   };
 
   useEffect(() => {
@@ -619,6 +627,26 @@ export default function ProviderDetailPage() {
     }
   };
 
+  // Long model imports report into the task store so the bell carries -
+  // mirroring how Setup / proxy-pools / token-saver long runs do it.
+  const startImportTask = (taskId, title) => {
+    useTaskStore.getState().start({
+      id: taskId,
+      title,
+      message: "Fetching model list...",
+      progress: 0,
+      href: typeof window !== "undefined" ? window.location.pathname : null,
+    });
+  };
+  const finishImportTask = (taskId, message) => {
+    useTaskStore.getState().update(taskId, {
+      message,
+      progress: 100,
+      state: "done",
+    });
+    useTaskStore.getState().finish(taskId);
+  };
+
   // Fetch Qoder model list and automatically add to available models
   const handleImportQoderModels = async () => {
     if (importingQoderModels) return;
@@ -628,24 +656,33 @@ export default function ProviderDetailPage() {
       return;
     }
 
+    const taskId = `import-qoder-models-${Date.now()}`;
     setImportingQoderModels(true);
+    startImportTask(taskId, "Importing Qoder models");
     try {
       const res = await fetch(`/api/providers/${activeConnection.id}/models`);
       const data = await res.json();
       if (!res.ok) {
         alert(data.error || translate("Failed to fetch models"));
+        finishImportTask(taskId, data.error || "Fetch failed");
         return;
       }
       const models = data.models || [];
       if (models.length === 0) {
         alert(translate("No models returned"));
+        finishImportTask(taskId, "No models returned");
         return;
       }
+      useTaskStore.getState().update(taskId, { message: `Adding ${models.length} models...`, progress: 0 });
 
       let importedCount = 0;
-      for (const model of models) {
+      for (const [index, model] of models.entries()) {
         const modelId = model.id || model.name;
         if (!modelId) continue;
+        useTaskStore.getState().update(taskId, {
+          message: `Checking ${modelId} (${index + 1}/${models.length})...`,
+          progress: Math.round(((index + 1) / models.length) * 100),
+        });
         
         // Qoder model ID format may be "qoder/auto", "qoder-cn/auto" or "auto",
         // need to remove the provider prefix before storing.
@@ -662,12 +699,15 @@ export default function ProviderDetailPage() {
       }
       
       if (importedCount === 0) {
+        finishImportTask(taskId, "All models already exist");
         alert(translate("All models already exist, no new models added"));
       } else {
+        finishImportTask(taskId, `Added ${importedCount} models`);
         alert(translate("Successfully added") + ` ${importedCount} ` + translate("models"));
       }
     } catch (error) {
       console.log("Error importing Qoder models:", error);
+      finishImportTask(taskId, "Fetch failed");
       alert(translate("Error fetching models") + ": " + error.message);
     } finally {
       setImportingQoderModels(false);
@@ -682,23 +722,32 @@ export default function ProviderDetailPage() {
       alert(translate("Please add an active Cline connection first"));
       return;
     }
+    const taskId = `import-cline-models-${Date.now()}`;
     setImportingClineModels(true);
+    startImportTask(taskId, "Importing Cline models");
     try {
       const res = await fetch(`/api/providers/${activeConnection.id}/models`);
       const data = await res.json();
       if (!res.ok) {
         alert(data.error || translate("Failed to fetch models"));
+        finishImportTask(taskId, data.error || "Fetch failed");
         return;
       }
       const models = data.models || [];
       if (models.length === 0) {
         alert(translate("No models returned"));
+        finishImportTask(taskId, "No models returned");
         return;
       }
+      useTaskStore.getState().update(taskId, { message: `Adding ${models.length} models...`, progress: 0 });
       let importedCount = 0;
-      for (const model of models) {
+      for (const [index, model] of models.entries()) {
         const modelId = model.id || model.name;
         if (!modelId) continue;
+        useTaskStore.getState().update(taskId, {
+          message: `Checking ${modelId} (${index + 1}/${models.length})...`,
+          progress: Math.round(((index + 1) / models.length) * 100),
+        });
         const alreadyExists = customModels.some(
           (entry) => entry.providerAlias === providerStorageAlias && entry.id === modelId && (entry.kind || entry.type || "llm") === "llm"
         ) || Object.values(modelAliases).includes(`${providerStorageAlias}/${modelId}`);
@@ -709,12 +758,15 @@ export default function ProviderDetailPage() {
         importedCount += 1;
       }
       if (importedCount === 0) {
+        finishImportTask(taskId, "All models already exist");
         alert(translate("All models already exist, no new models added"));
       } else {
+        finishImportTask(taskId, `Added ${importedCount} models`);
         alert(translate("Successfully added") + ` ${importedCount} ` + translate("models"));
       }
     } catch (error) {
       console.log("Error importing Cline models:", error);
+      finishImportTask(taskId, "Fetch failed");
       alert(translate("Error fetching models") + ": " + error.message);
     } finally {
       setImportingClineModels(false);
@@ -1074,9 +1126,12 @@ export default function ProviderDetailPage() {
                 onMoveDown={() => handleSwapPriority(index, index + 1)}
                 onToggleActive={(isActive) => handleUpdateConnectionStatus(conn.id, isActive)}
                 autoPing={AUTO_PING_SETTINGS_KEYS[providerId] && conn.authType === "oauth" ? {
-                  on: autoPing.connections[conn.id] === true,
-                  onToggle: (on) => handleAutoPingConnection(conn.id, on),
+                  isActive: autoPing.connections[conn.id] === true || autoPing.schedules?.[conn.id]?.enabled === true,
+                  reactiveOn: autoPing.connections[conn.id] === true,
                   provider: providerId,
+                  scheduleOn: autoPing.schedules?.[conn.id]?.enabled === true,
+                  scheduleSummary: getScheduleSlotLabels(autoPing.schedules?.[conn.id]).join(" / "),
+                  onConfigure: () => setScheduleConnection(conn),
                 } : null}
                 onUpdateProxy={async (proxyPoolId) => {
                   try {
@@ -1321,31 +1376,57 @@ export default function ProviderDetailPage() {
           const notAdded = suggestedModels.filter(
             (m) => !addedFullModels.has(`${providerStorageAlias}/${m.id}`) && !hardcodedIds.has(m.id)
           );
+          // Free ids first with their badge, paid ids below under their own
+          // heading. A row without the flag (older data) counts as paid so a
+          // paid model can never wear the free badge by accident.
+          const freeSuggested = notAdded.filter((m) => m.isFree === true);
+          const paidSuggested = notAdded.filter((m) => m.isFree !== true);
           // Keep the block alive when a refresh failed: an empty chip list with
           // no explanation reads as "there are no free models", which is not
           // what happened - the note under the heading carries the reason.
           if (notAdded.length === 0 && !suggestedModelsError) return null;
           return (
             <div className="w-full mt-2">
-              <p className="text-xs text-text-muted mb-2">Suggested free models:</p>
+              <p className="text-xs text-text-muted mb-2">Suggested free models ({freeSuggested.length}):</p>
               {suggestedModelsError && (
                 <p className="text-[11px] text-amber-600 dark:text-amber-400 mb-2">{suggestedModelsError}</p>
               )}
               <div className="flex flex-wrap gap-2">
-                {notAdded.map((m) => (
+                {freeSuggested.map((m) => (
                   <button
                     key={m.id}
                     onClick={async () => {
                       await handleAddCustomModel(m.id, "llm", providerStorageAlias);
                     }}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-black/10 dark:border-white/10 text-xs text-text-muted hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors"
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-green-500/30 dark:border-green-500/25 text-xs text-text-muted hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors"
                     title={m.contextLength != null ? `${m.name} · ${(m.contextLength / 1000).toFixed(0)}k ctx` : m.name}
                   >
                     <span className="material-symbols-outlined text-[13px]">add</span>
                     {m.id.split("/").pop()}
+                    <span className="text-[10px] font-bold text-green-600 dark:text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded">FREE</span>
                   </button>
                 ))}
               </div>
+              {paidSuggested.length > 0 && (
+                <>
+                  <p className="text-xs text-text-muted mt-3 mb-2">Other models ({paidSuggested.length}):</p>
+                  <div className="flex flex-wrap gap-2">
+                    {paidSuggested.map((m) => (
+                      <button
+                        key={m.id}
+                        onClick={async () => {
+                          await handleAddCustomModel(m.id, "llm", providerStorageAlias);
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-black/10 dark:border-white/10 text-xs text-text-muted hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors"
+                        title={m.contextLength != null ? `${m.name} · ${(m.contextLength / 1000).toFixed(0)}k ctx` : m.name}
+                      >
+                        <span className="material-symbols-outlined text-[13px]">add</span>
+                        {m.id.split("/").pop()}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           );
         })()}
@@ -1984,6 +2065,17 @@ export default function ProviderDetailPage() {
           isOpen={showBulkImportGrokCli}
           onClose={() => setShowBulkImportGrokCli(false)}
           onSuccess={fetchConnections}
+        />
+      )}
+
+      {scheduleConnection && (
+        <AutoPingScheduleModal
+          isOpen={!!scheduleConnection}
+          onClose={() => setScheduleConnection(null)}
+          connection={scheduleConnection}
+          reactive={autoPing.connections[scheduleConnection.id] === true}
+          schedule={autoPing.schedules?.[scheduleConnection.id] || null}
+          onSave={(result) => handleSaveAutoPing(scheduleConnection.id, result)}
         />
       )}
 

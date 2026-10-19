@@ -136,7 +136,52 @@ const CATEGORY_ALIAS = {
  deprecated: "Deprecated",
  deprecations: "Deprecated",
  renames: "Deprecated",
- docs: "Docs",
+ "bug fixes": "Fixes",
+  "bugfixes": "Fixes",
+  changed: "Changed",
+  refactors: "Changed",
+  refactoring: "Changed",
+  "behavior changes": "Changed",
+  "behaviour changes": "Changed",
+  performance: "Performance",
+  perf: "Performance",
+  "performance improvements": "Performance",
+  optimization: "Performance",
+  optimizations: "Performance",
+  ui: "UI",
+  "ui/ux": "UI",
+  "ui & ux": "UI",
+  "ui changes": "UI",
+  styling: "UI",
+  style: "UI",
+  design: "UI",
+  accessibility: "UI",
+  a11y: "UI",
+  "what's added?": "Features",
+  "whats added?": "Features",
+  "what was added?": "Features",
+  "what was fixed?": "Fixes",
+  "what changed?": "Changed",
+  "what's new?": "Features",
+  "what's new": "Features",
+  "what changed": "Changed",
+  "what was fixed": "Fixes",
+  "what was removed": "Removed",
+  "what was undone?": "Undone",
+  "what was undone": "Undone",
+  "undone": "Undone",
+  "upstream sync": "Internal",
+  "skipped": "Internal",
+  "what was deleted?": "Removed",
+  "what was replaced?": "Deprecated",
+  "what was renamed?": "Deprecated",
+  "what was hardened?": "Security",
+  "what's documented?": "Docs",
+  "what was documented?": "Docs",
+  "what's under the hood?": "Internal",
+  "what got faster?": "Performance",
+  "what looks different?": "UI",
+  docs: "Docs",
  documentation: "Docs",
  internal: "Internal",
  notes: "Internal",
@@ -155,13 +200,17 @@ function canonicalCategory(name) {
 }
 
 const CATEGORY_STYLE = {
- Features: { verb: "Added", icon: "add_circle", color: "#22c55e", tint: "rgba(34,197,94,.10)" },
- Fixes: { verb: "Fixed", icon: "build", color: "#f59e0b", tint: "rgba(245,158,11,.10)" },
- Security: { verb: "Security", icon: "shield", color: "#ef4444", tint: "rgba(239,68,68,.10)" },
- Removed: { verb: "Removed", icon: "remove_circle", color: "#f43f5e", tint: "rgba(244,63,94,.10)" },
- Deprecated: { verb: "Deprecated", icon: "warning", color: "#a855f7", tint: "rgba(168,85,247,.10)" },
- Docs: { verb: "Docs", icon: "menu_book", color: "#38bdf8", tint: "rgba(56,189,248,.10)" },
- Internal: { verb: "Internal", icon: "build_circle", color: "#94a3b8", tint: "rgba(148,163,184,.10)" },
+  Features: { verb: "Added", question: "WHAT\u2019S ADDED?", icon: "add", color: "#22c55e", tint: "rgba(34,197,94,.10)" },
+  Fixes: { verb: "Fixed", question: "WHAT WAS FIXED?", icon: "check_circle", color: "#f59e0b", tint: "rgba(245,158,11,.10)" },
+  Removed: { verb: "Removed", question: "WHAT WAS DELETED?", icon: "delete", color: "#f43f5e", tint: "rgba(244,63,94,.10)" },
+  Deprecated: { verb: "Deprecated", question: "WHAT WAS REPLACED?", icon: "restart_alt", color: "#a855f7", tint: "rgba(168,85,247,.10)" },
+  Undone: { verb: "Undone", question: "WHAT WAS UNDONE?", icon: "history", color: "#0ea5e9", tint: "rgba(14,165,233,.10)" },
+  Changed: { verb: "Changed", question: "WHAT CHANGED?", icon: "edit_note", color: "#ec4899", tint: "rgba(236,72,153,.10)" },
+  Performance: { verb: "Faster", question: "WHAT GOT FASTER?", icon: "bolt", color: "#06b6d4", tint: "rgba(6,182,212,.10)" },
+  Security: { verb: "Hardened", question: "WHAT WAS HARDENED?", icon: "shield", color: "#ef4444", tint: "rgba(239,68,68,.10)" },
+  Docs: { verb: "Documented", question: "WHAT\u2019S DOCUMENTED?", icon: "menu_book", color: "#38bdf8", tint: "rgba(56,189,248,.10)" },
+  UI: { verb: "Redesigned", question: "WHAT LOOKS DIFFERENT?", icon: "palette", color: "#f97316", tint: "rgba(249,115,22,.10)" },
+  Internal: { verb: "Internal", question: "WHAT\u2019S UNDER THE HOOD?", icon: "science", color: "#94a3b8", tint: "rgba(148,163,184,.10)" },
 };
 
 function categoryStyle(name) {
@@ -170,7 +219,7 @@ function categoryStyle(name) {
  CATEGORY_STYLE[key] ||
  // Unknown categories still get a stable look instead of falling back to the
  // heading style that made everything blur together.
- { verb: key, icon: "label", color: "#94a3b8", tint: "rgba(148,163,184,.08)" }
+ { verb: key, question: key.toUpperCase() + "?", icon: "help", color: "#94a3b8", tint: "rgba(148,163,184,.08)" }
  );
 }
 
@@ -178,10 +227,10 @@ function categoryStyle(name) {
 // rather than the whole line keeps the rest of the sentence untouched.
 const CHANGE_VERB = [
  { re: /^(add(ed|s)?|introduc(e|ed|es|ing)|support(ed|s)?|implement(ed|s)?|new)\b/i, kind: "Added", icon: "add", color: "#22c55e" },
- { re: /^(fix(es|ed)?|correct(s|ed)?|repair(s|ed)?|resolv(e|es|ed))\b/i, kind: "Fixed", icon: "build", color: "#f59e0b" },
- { re: /^(remove[sd]?|delet(e|es|ed)|drop(s|ped)?|retire[sd]?)\b/i, kind: "Removed", icon: "remove", color: "#f43f5e" },
+ { re: /^(fix(es|ed)?|correct(s|ed)?|repair(s|ed)?|resolv(e|es|ed))\b/i, kind: "Fixed", icon: "check_circle", color: "#f59e0b" },
+ { re: /^(remove[sd]?|delet(e|es|ed)|drop(s|ped)?|retire[sd]?)\b/i, kind: "Removed", icon: "delete", color: "#f43f5e" },
  { re: /^(deprecat(e|ed|es)|renam(e|ed|es)|chang(e|ed|es))\b/i, kind: "Changed", icon: "edit", color: "#a855f7" },
- { re: /^(upgrad(e|ed|es)|bump(s|ed)?|rais(e|ed|es)|increas(e|ed|es))\b/i, kind: "Changed", icon: "trending_up", color: "#a855f7" },
+ { re: /^(upgrad(e|ed|es)|bump(s|ed)?|rais(e|ed|es)|increas(e|ed|es))\b/i, kind: "Changed", icon: "arrow_upward", color: "#a855f7" },
  { re: /^(secur(e|ity)|harden(s|ed)?|sign(s|ed)?|authent(icat(e|ion)))\b/i, kind: "Security", icon: "shield", color: "#ef4444" },
 ];
 
@@ -212,11 +261,10 @@ function renderBody(bodyMd) {
  const name = canonicalCategory(raw);
  const st = categoryStyle(raw);
  return (
- `<h${level}${attrs} class="cl-cat" style="display:flex;align-items:center;gap:8px;margin:18px 0 10px;padding:7px 11px;border-radius:9999px;` +
+ `<h${level}${attrs} class="cl-cat" data-cat="${escapeHtml(name)}" style="display:flex;align-items:center;gap:8px;margin:18px 0 10px;padding:7px 11px;border-radius:10px;border-left:3px solid ${st.color};` +
  `background:${st.tint};border:1px solid ${st.color}33;font-size:inherit;font-weight:inherit;">` +
  `<span class="material-symbols-outlined" style="font-size:16px;color:${st.color};line-height:1;">${st.icon}</span>` +
- `<span style="font-size:13px;font-weight:700;letter-spacing:.02em;color:${st.color};">${escapeHtml(st.verb.toUpperCase())}</span>` +
- `<span style="font-size:12px;font-weight:600;color:${st.color};opacity:.65;">${escapeHtml(name)}</span>` +
+ `<span style="font-size:12.5px;font-weight:800;letter-spacing:.06em;color:${st.color};">${escapeHtml(st.question || (st.verb || name).toUpperCase())}</span>` +
  `</h${level}>`
  );
  });
@@ -485,13 +533,13 @@ export default function ChangelogModal({ isOpen, onClose }) {
       />
       <div
         ref={modalRef}
-        className="relative w-full bg-surface border border-black/10 dark:border-white/10 rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-w-3xl flex flex-col max-h-[85vh]"
+        className="relative w-full bg-surface border border-border-subtle rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-w-3xl flex flex-col max-h-[85vh]"
       >
-        <div className="flex items-center justify-between gap-3 p-3 border-b border-black/5 dark:border-white/5">
+        <div className="flex items-center justify-between gap-3 p-3 border-b border-border-subtle">
           <h2 className="text-lg font-semibold text-text-main">Change Log</h2>
           <div className="flex items-center gap-2">
             {available.length > 1 && (
-              <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-black/5 dark:bg-white/5">
+              <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-surface-2">
                 {available.map((source) => (
                   <button
                     key={source.id}
@@ -511,7 +559,7 @@ export default function ChangelogModal({ isOpen, onClose }) {
             )}
             <button
               onClick={onClose}
-              className="p-1 rounded-lg text-text-muted hover:text-text-main hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+              className="p-1 rounded-lg text-text-muted hover:text-text-main hover:bg-surface-2 transition-all"
             >
               <span className="material-symbols-outlined text-[20px]">close</span>
             </button>
