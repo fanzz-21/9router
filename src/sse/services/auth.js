@@ -51,23 +51,35 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       const override = (settings.providerStrategies || {})[providerId] || {};
       const strategy = override.rotateStrategy || "none";
       let pickedId = override.proxyPoolId || null;
+
+      const allPools = strategy !== "none" ? await getProxyPools({ isActive: true }) : [];
+      const selectedPool = pickedId ? allPools.find((p) => p.id === pickedId) : null;
+      const hasDynamicSid = /-sid-\d+/i.test(selectedPool?.proxyUrl || "");
+
       if (strategy !== "none") {
-        const allPools = await getProxyPools({ isActive: true });
         const poolIds = allPools
-          .filter(p => p.proxyUrl)
-          .map(p => p.id)
-          .filter(id => !excludeSet.has(`proxy:${id}`) && !excludeSet.has(id));
+          .filter((p) => p.proxyUrl)
+          .map((p) => p.id)
+          .filter((id) => !excludeSet.has(`proxy:${id}`) && !excludeSet.has(id));
         if (poolIds.length === 0) {
           log.warn("AUTH", `${provider} | all proxy pools exhausted (${excludeSet.size} excluded)`);
           return null;
         }
         pickedId = pickProxyPoolId(poolIds, strategy, providerId);
-      } else if (pickedId && (excludeSet.has(`proxy:${pickedId}`) || excludeSet.has(pickedId))) {
+      } else if (!pickedId && excludeSet.has("noauth")) {
+        log.warn("AUTH", `${provider} | direct public connection already excluded`);
+        return null;
+      } else if (pickedId && !hasDynamicSid && (excludeSet.has(`proxy:${pickedId}`) || excludeSet.has(pickedId))) {
         log.warn("AUTH", `${provider} | configured proxy pool ${pickedId} excluded`);
         return null;
       }
       const resolvedProxy = await resolveConnectionProxyConfig({ proxyPoolId: pickedId || "" });
-      const connectionId = pickedId ? `proxy:${pickedId}` : "noauth";
+      const sidMatch = (resolvedProxy.connectionProxyUrl || "").match(/-sid-(\d+)/i);
+      const connectionId = pickedId ? (sidMatch ? `proxy:${pickedId}:${sidMatch[1]}` : `proxy:${pickedId}`) : "noauth";
+      if (excludeSet.has(connectionId)) {
+        log.warn("AUTH", `${provider} | connection ${connectionId} already excluded`);
+        return null;
+      }
       const connectionName = pickedId ? (resolvedProxy.proxyPool?.name || `Proxy (${pickedId.slice(0, 8)})`) : "Public";
       return {
         id: connectionId,
@@ -389,6 +401,6 @@ export function extractApiKey(request) {
  */
 export async function isValidApiKey(apiKey, requestedModel = null, clientIp = null) {
   if (!apiKey) return false;
-  return await validateApiKey(apiKey, requestedModel, clientIp);
+  return await validateApiKey(apiKey, requestedModel);
 }
 

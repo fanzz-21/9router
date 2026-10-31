@@ -2,6 +2,7 @@ import { AntigravityExecutor } from "./antigravity.js";
 import { AzureExecutor } from "./azure.js";
 import { BedrockExecutor } from "./bedrock.js";
 import { GeminiCLIExecutor } from "./gemini-cli.js";
+import { GeminiWebExecutor } from "./gemini-web.js";
 import { GithubExecutor } from "./github.js";
 import { IFlowExecutor } from "./iflow.js";
 import { QoderExecutor } from "./qoder.js";
@@ -13,10 +14,8 @@ import { VertexExecutor } from "./vertex.js";
 import { OpenCodeExecutor } from "./opencode.js";
 import { OpenCodeGoExecutor } from "./opencode-go.js";
 import { OpenCodeZenExecutor } from "./opencode-zen.js";
+import { OpenCodeV2Executor } from "./opencodeV2.js";
 import { GrokCliExecutor } from "./grok-cli.js";
-import { DeepSeekWebExecutor } from "./deepseek-web.js";
-import { GeminiWebExecutor } from "./gemini-web.js";
-import { KimiWebExecutor } from "./kimi-web.js";
 import { OllamaLocalExecutor } from "./ollama-local.js";
 import { CommandCodeExecutor } from "./commandcode.js";
 import { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";
@@ -35,6 +34,9 @@ const executors = {
   antigravity: new AntigravityExecutor(),
   azure: new AzureExecutor(),
   "gemini-cli": new GeminiCLIExecutor(),
+  "gemini-web": new GeminiWebExecutor(),
+  gweb: new GeminiWebExecutor(),
+  "gemini-cookie": new GeminiWebExecutor(),
   github: new GithubExecutor(),
   iflow: new IFlowExecutor(),
   qoder: new QoderExecutor(),
@@ -47,20 +49,14 @@ const executors = {
   vertex: new VertexExecutor("vertex"),
   "vertex-partner": new VertexExecutor("vertex-partner"),
   opencode: new OpenCodeExecutor(),
+  oc: new OpenCodeExecutor(),
   "opencode-go": new OpenCodeGoExecutor(),
   "opencode-zen": new OpenCodeZenExecutor(),
+  "opencode-v2": new OpenCodeV2Executor(),
+  oc2: new OpenCodeV2Executor(),
   "grok-cli": new GrokCliExecutor(),
   gcli: new GrokCliExecutor(), // Alias
   gb: new GrokCliExecutor(), // Alias (Grok Build)
-  "deepseek-web": new DeepSeekWebExecutor(),
-  dsw: new DeepSeekWebExecutor(),
-  "deepseek-cookie": new DeepSeekWebExecutor(),
-  "gemini-web": new GeminiWebExecutor(),
-  gweb: new GeminiWebExecutor(),
-  "gemini-cookie": new GeminiWebExecutor(),
-  "kimi-web": new KimiWebExecutor(),
-  kweb: new KimiWebExecutor(),
-  "kimi-cookie": new KimiWebExecutor(),
   "ollama-local": new OllamaLocalExecutor(),
   commandcode: new CommandCodeExecutor(),
   "xiaomi-tokenplan": new XiaomiTokenplanExecutor(),
@@ -103,6 +99,7 @@ export { AntigravityExecutor } from "./antigravity.js";
 export { AzureExecutor } from "./azure.js";
 export { BedrockExecutor } from "./bedrock.js";
 export { GeminiCLIExecutor } from "./gemini-cli.js";
+export { GeminiWebExecutor } from "./gemini-web.js";
 export { GithubExecutor } from "./github.js";
 export { IFlowExecutor } from "./iflow.js";
 export { QoderExecutor } from "./qoder.js";
