@@ -1,8 +1,1223 @@
+# v0.5.344 (2026-10-29) · 1 commit
+
+## UI
+- **The lane marker is a muted suffix, not a chip.** "USING CLI" read like a status flag and the green box competed with the connection badges, so it is now "With CLI" in plain muted text after the name (`OpenCode Free · With CLI`). No border, no fill; it reads as part of the title instead of a second status.
+
+# v0.5.343 (2026-10-29) · 1 commit
+
+## UI
+- **"USING CLI" is a chip, not part of the name.** The label moved out of `display.name` into `display.tag`, so the card and the provider header render it as a green bordered chip next to "OpenCode Free" instead of a parenthetical in the title. Search still matches the plain name.
+
+## Fixes
+- **The Gemini Web cookie field could not be typed into.** `AddApiKeyModal` calls `splitGeminiCookie()` and `composeGeminiCookie()` on every keystroke but never imported them, so the first character threw a `ReferenceError`, React aborted the handler, and the controlled input snapped back to empty — the field looked dead. The edit modal already imported them, which is why an existing session could be edited while a new one could not be added. Import added.
+
+# v0.5.342 (2026-10-29) · 1 commit
+
+## UI
+- **Renamed OpenCode Free providers for clarity.** The original CLI-based lane is now "OpenCode Free (USING CLI)" and the new direct-TLS lane (previously "OpenCode Free V2") is now just "OpenCode Free". IDs and aliases unchanged (`oc` / `oc2`).
+
+# v0.5.341 (2026-10-29) · 1 commit
+
+## Fixes
+- **OpenCode Free V2 shares the V1 brand mark and icon.** `opencode-v2` now aliases to `opencode` in `providerIcon.js`, so it uses the exact same `/providers/opencode.png` logo and styling as OpenCode Free V1 without needing a duplicate asset.
+
+# v0.5.340 (2026-10-29) · 1 commit
+
+## Features
+- **OpenCode Free V2 (`oc2`) — the lane that works with no proxy.** The V1 lane reaches `opencode.ai` three different ways before it sends a wire request: it spawns the host `opencode` CLI, then a Bun transport sidecar, then an egress probe that re-tests the direct IP. On a host without the CLI and without `bun` each of those fails slowly, and the request that finally goes out rides Node's OpenSSL ClientHello — which the free tier refuses or black-holes, so the call sits until the 60s connect timeout. That is the "timeout terus, tapi di decolua jalan" symptom: decolua's lane sends the wire request straight through `opencodeTlsFetch`, whose cipher list matches Bun's, and nothing else runs first.
+
+## Fixes
+- **The TLS client existed but was never wired into the request.** `BaseExecutor` only uses `directFetch` when a subclass passes it, and the V1 executor never did, so `opencodeTlsFetch` was dead code on every path. The V2 executor passes it exactly as decolua does (`directFetch: (url, options) => opencodeTlsFetch(...)`) and keeps proxy handling untouched: with a proxy configured the proxy wins, without one the impersonated client is used.
+- **`wreq-js` was missing from the install.** It is the optional dependency behind the impersonating client; without it the TLS path throws `OpencodeTlsUnavailableError` and the caller silently falls back to native fetch — back to the gate. Added to `optionalDependencies` (the lazy loader can still fetch it into `<DATA_DIR>/runtime`).
+
+## Internal
+- V2 is a separate registry entry (`opencode-v2`, alias `oc2`, "OpenCode Free V2") and a separate executor, so the V1 lane keeps its CLI/sidecar/egress behaviour untouched. Verified direct, no proxy: `big-pickle` answered `200` in 1.3s with `OK`.
+
+# v0.5.339 (2026-10-29) · 1 commit
+
+## Fixes
+- **No screen prints a provider id any more.** `humanizeCompatId` used to append the uuid (`OpenAI Compatible (330688af)`); that suffix is still a database key, just a shorter one, so the label is now the family alone (`OpenAI Compatible`). Two unnamed compatible nodes that would collide are numbered by `dedupeLabels` (`OpenAI Compatible`, `OpenAI Compatible 2`) instead of being split by id.
+- **The Logs tab printed the raw provider id in caps.** `getRecentLogs` uppercased `r.provider`, so the row read `OPENAI-COMPATIBLE-CHAT-330688AF`. It resolves through `labelForProvider` and no longer uppercases the label.
+- **The request log rows are objects, not pipe-joined strings.** An account or model containing ` | ` shifted every later column and the row disappeared from the table; the API returns fields and the client renders them, still accepting a pipe string so an in-flight cached response cannot blank the table.
+- **Provider tooltips repeated the id the label had already replaced.** `Recent Requests` and the provider filter in the quota tab carried `title={provider}` with the raw id; the tooltip now shows the same label as the text.
+- **The model picker could still head a group with an id.** A provider missing from the static registry fell back to `{ name: providerId }`, so a compatible node still opened a `openai-compatible-chat-…` heading; the fallback runs through `resolveProviderName` and the quota card's title does too.
+- **Every successful log row pulsed as if it were pending.** The status column compared against uppercase (`OK`/`FAILED`) while the stored values are lowercase, so `ok` matched nothing and fell into the pending branch; the comparison folds case and the cell prints the status uppercased.
+
+# # v0.5.338 (2026-10-29) · 1 commit
+
+## Fixes
+- **The activity heatmap fit a desktop card, not a phone.** 24 buckets of `14px + 3px gap` plus a 28px day gutter measure 441px, so on a 390px viewport 42 cells sat past the card edge with no scroll container to reach them. The block is one CSS grid now (`repeat(24, minmax(0, 14px))`), so cells shrink on a narrow screen instead of overflowing, and the hour ruler prints at 10px like the rest of the shell.
+- **The Savings tab showed numbers for a report that has no rows.** With zero savings the card still printed `Avg 0 / active day` next to a "nothing saved in this period" chart, and a model filter box sat above an empty table. The summary chips and the filter are hidden until there is data behind them.
+
+## Internal
+- Dropped the leftover `await import()` of `humanizeCompatId` inside `getProviderLookups`; the symbol is already a static import, so the dynamic one only re-resolved the same module.
+
+# v0.5.337 (2026-10-29) · 1 commit
+
+## Fixes
+- **The savings axis printed bare day numbers.** Every tick except the peak was stripped to its day-of-month (`30 4 8 12 16 20 24`), which reads like an hour axis rather than a date axis — the strip was there to stop a tick being clipped when labels sat inline in a ~25px slot, but they have been absolutely centred with room to spare since the tick-spacing fix, so `Oct 4` fits. Ticks print the full short date again.
+
+# v0.5.336 (2026-10-29) · 1 commit
+
+## Fixes
+- **The notification count was the one piece of text under 10px in the sidebar.** The unread badge rendered at 9px in a 15px circle, so a two-digit count was unreadable at a glance; it is 10px in a 16px circle now, which is the smallest size the rest of the shell uses.
+
+# v0.5.335 (2026-10-29) · 1 commit
+
+## Fixes
+- **The Savings tab names the model, not a node id.** `byModel` was keyed by the raw provider id, so a compatible node printed `openai-compatible-chat-330688af` as if it were a model name. The bucket is now split into provider and model, the API resolves the provider through `getProviderDisplayName`, and the row reads `gpt-5.1` with `OpenAI Compatible (330688af)` beneath it. The same lookup now labels `recentRequests`, `activeRequests`, the by-provider breakdown (`stats.providerLabels`) and the provider bar chart, which used to fall back to the raw id whenever `providerNodes` was empty.
+- **The Daily Savings chart has a floor and a scale.** Every bar was drawn at full strength, so a day with 950 tokens looked identical to the 128K peak and the whole strip read as "green box". Empty days are now a muted track, active days are emerald proportional to the peak, and the peak alone is drawn at full strength; tick labels are absolutely centred so a 25px slot cannot clip `Oct 23`, and neighbouring ticks step aside when the peak takes its own label.
+- **Cached tokens show up again in Recent Requests.** Five inline `||` chains only knew `cache_read_input_tokens` and `cached_tokens`, so a request that reported `prompt_tokens_details.cached_tokens`, `cachedContentTokenCount` or `prompt_cache_hit_tokens` rendered no badge at all. One `cacheReadTokens` helper now walks every spelling plus the nested details object, and the row prints the badge (verified against one seeded row per spelling: 640 / 960 / 512).
+- **A rewritten model on another provider is no longer printed twice.** `gweb/gemini-4-argon → gemini-web/gemini-4-argon` said the same thing twice; the arrow now appears only when the model name itself changed, and the resolved line drops the redundant provider prefix.
+- **The provider bar chart survives long labels.** Bars are horizontal, the axis takes the base name (`OpenAI Compatible`, not the 26-character node label), and a custom tick renderer keeps each label on one line — Recharts used to wrap it onto three lines that overlapped the neighbouring rows.
+
+## Performance
+- **Usage aggregation is memoized.** Each stats call ran three dynamic imports and then scanned every connection, node and API key to build the display names. `getProviderLookups` builds the three maps once and serves them for 15s, and the redundant `getConnectionMapCached` cache (same data, second copy, never invalidated) is gone.
+- **One shared stats snapshot per burst for the stream.** Every open tab subscribed to `/api/usage/stream` and each emitter tick asked the database to re-aggregate the whole period per connection, so three tabs meant three identical aggregations. A 750ms shared memo keeps updates live while a burst costs one aggregation.
+- **One ticker for every relative timestamp.** `TimeAgo` mounted a `setInterval` per row; twenty rows meant twenty timers waking a second apart and re-rendering twenty components. A single 1s ticker now drives all of them and stops when the last subscriber unmounts, and the stream client drops an SSE payload identical to the one already rendered instead of re-setting state.
+
+## Tests
+- `tests/unit/token-saver-savings.test.js` asserts the split model shape (`model`, `provider`, `key`), the gap-filled 30-day series and the empty-report case.
+- Two stale assertions that failed before this change were rewritten to the current behaviour: the empty state string in `UsageStats.js` and the `jev-1.13-free` decision (it belongs in the registry, the suggestion filter is what drops it).
+
+# v0.5.334 (2026-10-29) · 1 commit
+
+## Fixes
+- **PSID and PSIDTS are separate fields.** The `gemini-web` Add and Edit forms asked for one opaque `Cookie Value`, so a user who only has `__Secure-1PSID` had to leave a field looking half-filled and never found out that the timestamp part is optional. The form now asks for `__Secure-1PSID` (required) and `__Secure-1PSIDTS (optional)` separately and composes the cookie header itself; Save stays disabled until a PSID exists, because a timestamp alone cannot authenticate.
+- **Editing the timestamp no longer wipes the session.** `PUT /api/providers/:id` only ever wrote `apiKey` for `authType: "apikey"`, so a `gemini-web` connection could not be re-keyed at all. It now accepts a cookie edit and decides what to persist: a paste that carries its own `__Secure-1PSID` replaces the cookie, while a timestamp-only entry merges into the stored one instead of being written verbatim — the previous behaviour would have saved a cookie without the part that authenticates.
+- **Other Google cookies survive an edit.** `SAPISID`, `__Secure-3PSID`, `__Secure-1PSIDCC` and anything else in a pasted header are carried through the split/compose round trip. The executor signs `Authorization` from `SAPISID`, so dropping the extras while editing would have downgraded a working credential.
+- Unit tests: 16 cases for split, compose, merge and the persist decision (`tests/unit/gemini-cookie-fields.test.js`).
+
+# v0.5.333 (2026-10-29) · 1 commit
+
+## Fixes
+- **Gemini Web now honours the connection proxy.** `fetchSessionParams` and the `StreamGenerate` POST called the bare global `fetch`, so a proxy configured on the `gemini-web` connection was silently ignored — the request always left from the host's own IP. Both calls now go through `proxyAwareFetch` with the connection's proxy options, which is the only way to run a browser-session cookie from a host Google treats differently from the login IP.
+- **`fetch failed` now names the cause.** A 502 read `Gemini session fetch failed: fetch failed`, which is the same text for blocked egress, dead DNS, a reset connection and a broken TLS chain. The error now appends undici's `err.cause` code, e.g. `fetch failed (ENOTFOUND)` or `fetch failed (ECONNRESET)`, so the operator can tell a network fault from a rejected cookie in one glance.
+- **One IPv4 retry for hosts with a broken IPv6 route.** Containers that resolve AAAA records but cannot reach them (Railway among them) failed the connect phase while the same request worked from a laptop. A connect-phase failure (`ENETUNREACH`, `EHOSTUNREACH`, `EAI_AGAIN`, `ENOTFOUND`, `ECONNREFUSED`, `ETIMEDOUT`, `UND_ERR_CONNECT_TIMEOUT`) now retries once over an IPv4-pinned dispatcher before the error is reported. Proxied requests are exempt: the proxy resolves DNS on its side.
+- Verified on a live cookie: `gemini-3.5-flash-lite` returned `200` with `"OK"` in 20s through the new path.
+
+# v0.5.332 (2026-10-29) · 1 commit
+
+## Fixes
+- **A live Gemini Web cookie no longer reports "invalid".** The connection Test button ran a chat completion, but the cookie is a browser session, not a bearer token: `gemini-web` had no case in the test path and fell through to `"Provider test not supported"`, which the modal rendered as a red *Failed* badge and the card stored as `testStatus: error`. Testing now runs the same session probe the Check button uses — fetch `gemini.google.com/app` and require the `SNlM0e` bootstrap — so a valid cookie passes in about a second instead of waiting on the chat queue.
+- **Cookie pastes are normalized before they are judged.** A raw `__Secure-1PSID` value, a `Cookie: a=b; c=d` header, quoted values, and both JSON export shapes (flat map and `{ cookies: [...] }`) now reach the request identically; previously a quoted or prefixed paste was rejected as an invalid session.
+- **The rejection reason is shown, not just "Invalid".** Both the Add and Edit modals print the validator's message under the badge (signed-out page, HTTP status, missing session cookie, network timeout), and a failed *Test* shows the upstream error instead of a bare *Failed*.
+- **A missing `__Secure-1PSIDTS` is surfaced as a warning, not a failure.** The cookie still validates, but the connection is flagged because the session cannot rotate and dies once Google re-issues the timestamp.
+- Tests: `tests/unit/gemini-web-cookie.test.js` covers normalization of all five paste shapes plus accept, signed-out, non-200, network-failure and missing-session branches.
+
+# v0.5.331 (2026-10-29) · 1 commit
+
+## Fixes
+- **The model picker no longer opens a group for a provider that is not connected.** Custom-model rows outlive the connection they were created against: when a provider is removed (or a model is registered against an alias that was never set up here), the fallback that groups leftover custom models still rendered them under a heading for that absent provider — so the picker listed a provider the dashboard does not have, holding rows that cannot route anywhere. The alias is now traced back to its built-in provider, and the group is dropped when that provider has no active connection (compatible nodes stay exempt: they legitimately run without a stored key).
+- **Custom-model groups use the provider's display name.** A group built from leftover custom rows fell back to the storage alias, so a connected provider appeared as `gemini-web` instead of `Gemini Web` — a name nobody recognises from the dashboard. The registry entry now supplies the label and accent color, with the alias kept only as an internal key.
+
+# v0.5.330 (2026-10-29) · 1 commit
+
+## Fixes
+- **`tool_choice` is enforced on browser-session providers.** A client that pinned a function (`tool_choice: {"type":"function","function":{"name":"..."}}`) or demanded any tool (`"required"`) still got prose back, because the bridge wrote the rule once at the top of the prompt and the model drifted by the end of a long agent system prompt. The highest-priority reminder now closes with an explicit `FORCED` line naming the tool, placed after the example where it cannot be buried.
+- **Parallel tool calls are no longer suppressed.** The reminder said "do not output more than one tool_call", which turned "get Jakarta and Bandung weather" into a single call. It now allows several blocks when the request lists independent things, while still forcing one-at-a-time steps when calls depend on each other's results (the agent loop stays sequential).
+- `selectableTools` is exported so both prompt builders (executor and plugin bridge) derive the `tool_choice` mode from one place.
+- Tests: the bridge suite asserts the `FORCED` line lands on the final turn and that two fences in one reply become two `tool_calls`.
+
+# v0.5.329 (2026-10-29) · 1 commit
+
+## Fixes
+- **Gemini Web replies were cut off after the first frame.** `readGeminiStream` stopped as soon as the accumulated buffer parsed, but every mid-stream frame already carries the answer so far, so text stopped mid-sentence (`"1, 2, 3, 4, 5,"` for a count to 40) and tool-call JSON arrived half-written — which is why tool calling silently came back as plain text instead of `tool_calls`. The reader now keeps consuming until Google sends its terminal `["e",...]` frame (30s idle / 150s hard ceiling still apply), so replies and `finish_reason: "tool_calls"` come through whole.
+- Tests: `tests/unit/gemini-web-stream-full.test.js` feeds a fake stream with a partial frame followed by the full one and asserts the complete answer and an intact ```` ```tool_call ```` fence come out; the old reader fails both cases.
+
+# v0.5.328 (2026-10-29) · 1 commit
+
+## Fixes
+- **No built-in emoji left in the UI.** Emoji were rendered by the OS font, so the same screen looked different on Windows, macOS, Linux and Android, ignored the design tokens, and fell back to blank boxes when the system emoji font was missing. Every one is gone:
+  - Usage stats: the cached-token `⚡` in Recent requests is now the `bolt` glyph from the icon subset inside the same info chip, so it takes the chip's colour and size.
+  - Quota bars, quota table, provider cooldowns, connection cards, combo latency: `🟢/🟡/🔴/💰/⏱` replaced by token-coloured dots (`bg-success` / `bg-warning` / `bg-danger`), `schedule` and `bolt` glyphs.
+  - Language switcher, header language button and the Xiaomi region picker no longer use flag emoji (which render as bare letters on Windows). New `LocaleBadge` component draws the locale/region code as a chip: `border-border-subtle`, `bg-surface-2`, uppercase, tracked, 9-11px. Variants that shared a code stay distinct: `zh-CN`/`zh-TW` show 简/繁, `pt-BR`/`pt-PT` show BR/PT.
+  - Modals, update panel, marketplace, `GetStarted`, SAML guide, media example cards, MITM/Cowork cards: `✅ 🌐 🔑 🔐 ✓ ✕ ⚠️ 📝 🔷 🟢 🛡️ ☁️` replaced with `check` / `check_circle` / `language` / `key` / `lock` / `close` / `warning` / `edit_note` / `cloud` / `security` / `verified_user` / `shield_lock`.
+  - OAuth result popups and the MiMo login page draw their success/failure marks as inline SVG instead of `✓`.
+  - Translation catalogs (`public/i18n/literals/*.json`, all 34 locales) carried emoji in both keys and values (`⚠️ Risk Notice…`, `✓ Confirm Add`, `📝 Configure providers…`). Every key was rewritten emoji-free so the cleaned UI strings still hit their translations instead of falling back to English.
+  - Logs and console-log viewers strip emoji from upstream log lines at render time (`stripEmoji`), so provider messages and older log files can't reintroduce them; copy still returns the raw line.
+  - `getStatusEmoji()` deleted (dead export), `RISK_NOTICE` no longer starts with a warning emoji.
+- Tests: `tests/unit/no-emoji-ui.test.js` fails the build if any emoji reappears under `src/app` or `src/shared`, asserts `locales.js` ships codes instead of flags, and covers `stripEmoji`.
+
+---
+
+# v0.5.327 (2026-10-29)
+
+## Fixes
+- **Hide Raw Errors also covers upstream error frames inside a stream and non-JSON error bodies.** Two remaining ways a provider's own wording reached the client with the toggle on:
+  - A provider that answers `200` and then sends `data: {"error":{...}}` mid-stream. In passthrough mode (same client and provider format) the frame was forwarded verbatim; in translate mode it was silently dropped, so the client saw a truncated stream with no explanation. Now `createSSEStream` takes `hideError`, rewrites the frame's message and forwards it masked — a real error frame in the client's format instead of silence.
+  - An upstream HTML/text error page (Cloudflare 5xx, gateway HTML). `maskHiddenError()` only touched `application/json`, so the page went through untouched. It now rebuilds any text body as a masked JSON error, keeping the status and headers such as `retry-after`.
+- Tests: `tests/unit/stream-error-frame-hide.test.js` covers passthrough masking, the translate-mode error frame (OpenAI and Claude clients), the toggle-off passthrough, an HTML body rebuilt as masked JSON, and `retry-after` surviving a masked 429.
+
+---
+
+# v0.5.326 (2026-10-29)
+
+## Fixes
+- **Hide Raw Errors now hides every error, not most of them.** The toggle was threaded into two call sites inside `chatCore`, so any error built elsewhere — the all-accounts-rate-limited reply, combo exhaustion, the API-key gates, provider/executor responses, the non-SSE upstream body, the 404 "no credentials serving this model" — shipped the upstream text verbatim. That is why a `[model] [403]: {"error":{"message":"Model ... is not allowed for this API key"}} (reset after 2m)` still reached the client with the toggle on.
+  - `unavailableResponse()` grew a `hideError` parameter, so the "reset after Ns" reply masks its message while still sending the `retry-after` header.
+  - Every handler (`chat`, `fetch`, `images`, `embeddings`, `search`, `stt`, `tts`, `videos`, `systemone`) now masks at its public boundary via the new `maskHiddenError()` helper: any >=400 JSON body has `error.message` replaced, whichever branch produced it. Status code, `type` and `code` survive, so a client can still tell a 401 from a 503 — only the text goes.
+  - `hideError` reached the streaming path too: the abort-terminal error frame (`buildStreamErrorBytes`) and the non-SSE upstream body now honour it instead of leaking the upstream `<title>` text.
+  - Tests: `tests/unit/error-log-hide-error.test.js` covers `unavailableResponse` (masked message, `retry-after` kept) and the masked SSE frame.
+
+---
+
+# v0.5.325 (2026-10-28)
+
+## Fixes
+- **Copy button consistency**: every model-row copy control now uses the same button as the API-key list (`p-1`, `rounded`, `hover:bg-black/5 dark:hover:bg-white/5`, `hover:text-primary`, `transition-all`, 14px glyph). That covers Model Studio's name copy, the provider page's model rows, the compatible-provider section, the passthrough section and the providers card. The bespoke hover tooltips ("Copy" / "Copied!" floating label) and their hover-only reveal are gone, so the affordance is always visible and identical in both places. Model Studio's name copy also no longer swaps to a green "Copied" text label — it flips the glyph to a check, exactly like the API-key row.
+
+---
+
+# v0.5.324 (2026-10-28)
+
+## Fixes
+- **Proxy pools — bulk import dropped entries**: the import job skipped a pasted line whenever its NAME was already taken, and the client names every line after its host, so a list pointing at one host:port with rotating credentials imported only the first row. Duplicates are now decided by the proxy URL (scheme and host lowercased, port made explicit, credentials kept as part of the identity), and a repeated name merely gets a `#2`, `#3` suffix so the rows stay tellable apart. A genuine duplicate URL is still skipped, and the run now reports it as `skipped N duplicate` instead of `skipped N existing`.
+
+## Features
+- **Custom models — bulk edit**: Model Studio rows have a checkbox, and selecting more than one raises a toolbar with **Select all** / **Clear** / **Bulk edit**. The dialog writes input multiplier, output multiplier and context window to every selected model in one call (`PATCH /api/model-editor/bulk`). Only those three fields are accepted - the callable name is the model id clients send and the target decides which upstream answers, so neither is re-pointed by a bulk action. Models that disappeared between the tick and the Apply are reported back and dropped from the selection instead of failing the call.
+- **Custom models — duplicate icon**: the row's duplicate button now matches the API-key copy button (same padding, hover tint and 14px glyph) instead of its own larger style.
+
+## Testing
+- `tests/unit/proxy-bulk-import.test.js` (5 cases) drives the real job store + SQLite: repeated names all import, duplicate URLs are skipped, spelling variants collapse, and a URL stored by an earlier run is skipped.
+- `tests/unit/model-editor-bulk.test.js` (5 cases): patch applies to every selected model, untouched fields survive, `0` clears a multiplier, non-whitelisted fields are refused, missing models are reported.
+
+---
+
+# v0.5.323 (2026-10-28)
+
+## Features
+- **Plugins — Tool Calling Bridge**: a new custom plugin that gives function calling to upstreams which have none (browser-session providers, and any model the capability table reports as text-only). The request's `tools` are folded into the prompt (schema, call format, highest-priority reminder appended last), assistant `tool_calls` and `role:"tool"` turns are flattened into readable prose, and the `tools` array is dropped so an upstream that rejects it never sees it. The reply is parsed back into standard `tool_calls`.
+  - Response parsing runs two passes: the shapes models invent on their own (`open-sse/translator/concerns/toolBridge.js`) and the two formats the bridge itself instructs (` ```tool_call ` fence and `<<TOOL_CALL>>` marker). A call naming a tool the client never offered is dropped instead of invented.
+  - Because a tool call can only be recovered from a whole reply, a bridged turn is fetched non-streaming and the JSON completion is replayed as SSE, so a streaming client still receives its stream.
+  - Models with a native tool lane are left untouched — their real schema is never replaced by prompt text.
+  - Enabled per model on the Plugins page; advertises `tools:true` in `GET /api/models` and draws a "Tool Calling" plugin mark.
+- **API keys — bulk edit**: the bulk dialog now covers every field the endpoint accepts; added `Budget counted in` (tokens / USD / requests), `Daily USD limit` and `Request limit`, and a **Select all N** shortcut in the selection bar. The key material, the secret value and the permission map stay out of bulk edits on purpose.
+- **Custom models — duplicate**: every model in Model Studio has a copy button that opens the create form pre-filled with the source model's rules (target, context window, input/output multiplier, system prompt, `owned_by`) under a unique name (`<name>-copy`, `-copy-2`, …).
+
+## Fixes
+- **Build**: the plugin runtime resolves the browser-session provider list through a lazy import. Importing the provider registry eagerly pulled every provider module into the plugin module's init graph, which crashed the build worker (SIGABRT) while static pages were generated.
+
+## Testing
+- New `tests/unit/tool-calling-bridge.test.js`: 10 cases over the request rewrite, the dispatch rules (browser session vs native lane), and the response-side recovery.
+
+---
+
+# v0.5.322 (2026-10-28)
+
+## Features
+- **Gemini Web (cookie)**: restore the `gemini-web` provider (aliases `gweb`, `gemini-cookie`) with a fresh reverse-engineered implementation. The executor talks directly to `gemini.google.com/_/BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate`, auto-fetches the XSRF token (`SNlM0e`) from `/app`, and rotates the session on 429.
+- **Gemini Web models** (live hex IDs from `batchexecute?rpcids=otAQ7b`):
+  - `gemini-3.5-flash-lite` (hex `8c46e95b1a07cecc`, mode 6) — no cookie required
+  - `gemini-3.8-flash` (hex `56fdd199312815e2`, mode 1) — default
+  - `gemini-3.1-pro` (hex `e6fa609c3fa255c0`, mode 3)
+  - `gemini-4-argon` (hex `95a4c0abcba24364`, mode 8)
+  - `-thinking` variants for all four (inner[80]=2 + header slot 15)
+  - Legacy aliases: `gemini-3.6-flash`, `gemini-3.7-flash` resolve to `gemini-3.8-flash`
+- **Gemini Web cookie capture**: auto-capture from Chromium via CDP (domains `gemini.google.com`, cookies `__Secure-1PSID` + `__Secure-1PSIDTS`).
+- **Gemini Web validation**: `POST /api/providers/validate` now probes the cookie by fetching `/app` and checking for `SNlM0e` / `BardChatUi`.
+- **Gemini Web tool bridge**: OpenAI `tools` array is encoded into the prompt and parsed back from prose (via `webCookieToolBridge.js`) — same pattern as the old implementation.
+
+## Fixes
+- **Gemini Web hex drift**: the old hardcoded hexes (`fbb127bbb056c959`, `cf41b0e0dd7d53e5`, `9d8ca3786ebdfbea`) no longer match the live catalogue. The new implementation uses the current hexes and falls back to the old ones via `LEGACY_HEX` mapping.
+- **Gemini Web model selection**: the server ignores `inner[]` mode slots when no model header is sent — every request silently lands on Flash-Lite. The new executor always sends `x-goog-ext-525001261-jspb` with the correct hex.
+
+## Testing
+- Unit tests restored: `tests/unit/gemini-web-tools.test.js` (25/25 passing)
+- Direct executor test: all 4 models respond via the user's cookie (Flash-Lite 42s, Flash 27s, Pro 7s, Argon 36s)
+
+---
+
+# v0.5.321 (2026-10-27)
+
+## Breaking Changes
+- **Removed all webCookie providers**: deepseek-web, gemini-web, kimi-web, muse-web, chatgpt-web, uc-web, and opencode-v2 (OpenCode Free V2) have been removed from the registry, executors, and all related UI/API routes.
+- **Renamed `oc1/` prefix to `oc/`**: OpenCode Free V1 now uses `oc/` as its primary alias instead of `oc1/`. The `oc1` alias is removed; use `oc` or `opencode` going forward.
+
+## What Was Changed
+- Deleted registry files: `deepseek-web.js`, `gemini-web.js`, `kimi-web.js`, `muse-web.js`, `chatgpt-web.js`, `uc-web.js`, `opencode-v2.js`.
+- Deleted executor files: `deepseek-web.js`, `gemini-web.js`, `kimi-web.js`, `opencode-v2.js`.
+- Cleaned up all references in `registry/index.js`, `executors/index.js`, `providerModels.js`, `chat.js`, `providerIcon.js`, `probeBudget.js`, `cookieCapture.js`, `validate/route.js`, `testUtils.js`, `AddApiKeyModal.js`, and test files.
+- Updated `opencode.js` registry: `alias: "oc"`, `uiAlias: "oc"`, `textIcon: "OC"`, `display.name: "OpenCode Free"`.
+- Simplified `WEB_COOKIE_PROVIDERS` set to empty (all web cookie providers removed).
+- Removed opencode-v2 specific UI badges and conditional logic from dashboard pages.
+
+---
+
+# v0.5.320 (2026-10-27)
+
+## Features
+- **Ollama**: add `ollama-local` TTS provider serving the Phonon family (15 tags, 38 preset voices), normalizing the requested format to wav/pcm, falling back to an installed tag and the `default` voice, and wrapping raw PCM in a WAV header so the dashboard can preview it.
+- **Ollama**: add `ollama-local` embedding adapter for `/v1/embeddings`, normalizing a saved host that carries a `/v1` or `/v1/embeddings` suffix and sending a bearer token only when an API key is configured; catalog the 14 embedding model families with their dimensions.
+- **Providers**: add Runcrate (`rc`) — OpenAI-compatible upstream serving DeepSeek, GLM, Qwen and gpt-oss models, validated through `GET /api/v1/billing/balance` because the public `/v1/models` answers 200 for any key.
+- **Web Providers**: add Muse Web, ChatGPT Web, Veo AI Free Web, and UC Web cookie/API providers.
+- **CommandCode**: add Kimi K3.1 Pro to the catalog with the upstream id kept verbatim, riding the existing NDJSON `/alpha/generate` lane.
+- **OpenCode Go**: add Kimi K3.1 Pro on the chat lane with vision/video input, 1,048,576 context, 131,072 max output and dedicated K3 pricing.
+- **OpenCode (PR #17)**: per-egress 429 cooldown tracking with full `Retry-After` parsing, bounded proxy failover, deterministic session-id encoding, and complete `<env>` system-prompt fingerprinting; keeps serenhope's host CLI fallback.
+
+## Fixes
+- **CLI Tools**: stop the Pi card from resetting every `contextWindow`/`maxTokens` in `~/.pi/agent/models.json` on Apply, add per-model context-window and max-output selectors, and sanitize corrupt cap values instead of writing them back.
+- **CLI Tools**: treat `name === id` as unset on Apply so a hand-edited Pi model label is no longer overwritten.
+- **OpenCode**: normalize a caller tool that collides with the OpenCode fingerprint in place (keeping the caller's name and adopting the fingerprint schema) instead of aliasing it to `<name>_client` and restoring it on the response (#4971, #5011).
+- **OpenCode Free**: restore the free tier by sending the TLS ClientHello the upstream accepts (via optional `wreq-js`, fail-open to native fetch), minting session ids from the current time instead of a sha256 digest, and always pairing the CLI `<env>` system marker with a declared tool list.
+- **OpenCode Free**: cap the published context window of `oc/deepseek-v4.1-flash-free` at 330k so clients compact before the backend's limit (#5097).
+- **Translator**: convert `image_url` parts inside `role:"tool"` messages to Claude image blocks instead of forwarding them verbatim and failing with a 400 (#5125).
+- **DeepSeek**: send `deepseek-flash` upstream for `deepseek-v4.1-flash`, whose catalog id the API rejects (#4940).
+- **Claude**: keep adaptive thinking for Haiku 5.5 and downgrade to `enabled/10000` only below major version 5 (#5183).
+- **Thinking**: keep `reasoning_effort: max` for GPT-5.6 / GPT-6 served through OpenAI Compatible nodes instead of clamping it to `xhigh` (#5186).
+- **Codex Image**: drive the `image_generation` tool call from `gpt-6-sol` instead of the legacy `gpt-5.6-terra` host, and add `cx/gpt-6-sol-image`; drop the `gpt-5.6-{sol,terra,luna}-image` aliases they supersede.
+- **Capabilities**: match `*gpt-6*image*` before the generic `gpt-6` family pattern so `gpt-6-sol-image` resolves as an image model instead of inheriting the chat caps (vision/reasoning/1.05M window) and losing `imageOutput`.
+
+## Notes
+- Upstream `open-sse/rtk/headroom.js` Claude document/tool-history preservation was skipped because it conflicts heavily with serenhope's optimized headroom fork; review separately if needed.
+
+---
+  - Deleted `open-sse/utils/opencodeV2Channel.js` entirely (the scrambled residential endpoint + `OPENCODE_V2_ROUTE` override are gone).
+  - `auth.js` no-auth block restored to plain logic: direct public connection, user proxy pools, and rotation only — no built-in channel injection, no `isLockedProxy`/`displayProxyUrl` connection.
+  - `opencodeCliRunner.js` no longer falls back the CLI to the channel proxy; it only uses a proxy when the user explicitly configured one on the connection.
+  - `NoAuthProxyCard` (all no-auth providers incl. OpenCode V1/V2): the "builtin" option, its gold-shimmer label, hint, and Channel footer row are removed. The card keeps direct/custom-pool selection with rotation, and still self-heals stale pool ids from settings.
+  - Removed the now-unused `text-gold-shimmer` CSS and the `Select` text-transparent workaround.
+
+---
+
+# v0.5.318 (2026-10-25) · 1 commits
+
+## What Was Changed
+
+- **OpenCode Free V2 Built-in Channel Polish + Stale Pool Recovery:**
+  - Renamed the built-in proxy option and connection to **`proxy by: t.me/abcseren`** (replacing the verbose "Built-in Proxy (Residential Channel …)" label) in the dropdown, the auth connection name, and the card footer link.
+  - Added an animated **gold shimmer** treatment (`text-gold-shimmer`) on the `proxy by: t.me/abcseren` text: the select label renders transparent while a shimmering gold gradient overlay sits on top; the footer Channel link uses the same effect.
+  - **Fixed stale proxy-pool id regression:** a saved `providerStrategies[<provider>].proxyPoolId` pointing at a deleted pool made the `Proxy Source` select silently point at nothing (no options selected, no built-in channel active). The card now validates the saved id against the current pool list and falls back to the provider default; the auth service fails OpenCode V2 over to the built-in residential channel instead of degrading to unproxied direct mode when the configured pool no longer exists.
+  - **Fixed `/api/models` 500 error** (`ReferenceError: tdEnabled is not defined`) left over from the plugin rename — the studio-capabilities branch now reads the unified `adaptiveThinking` plugin config instead of the removed `thinkDeeper`/`jsonGuard` settings.
+
+---
+
+# v0.5.317 (2026-10-25) · 2 commits
+
+## What Was Changed
+
+- **OpenCode Free V2 Flexible Proxy Selector (Built-in, Direct, or Custom Pools):**
+  - Restored full proxy selection flexibility on OpenCode Free V2 detail page (`/dashboard/providers/opencode-v2`).
+  - Added seamless **Proxy Source** dropdown allowing users to select:
+    1. **Built-in Proxy**: Automated residential broadband rotation channel (`t.me/abcseren`) to avoid cloud 403 `FreeTierError`.
+    2. **None (direct / unproxied)**: Standard direct connection.
+    3. **Custom Proxy Pools**: User's configured proxy pools from Proxy Pools dashboard, with optional round-robin or random rotation.
+  - Aligned auth service (`auth.js`) and executor (`opencode-v2.js`) to honor the selected proxy source dynamically.
+
+---
+
+# v0.5.316 (2026-10-25) · 3 commits
+
+## What Was Changed
+
+- **Merge PR #15: OpenCode Executor Wiring, Fallback Spam Prevention, and CLI Concurrency:**
+  - **CLI Tool-Calling Bridge**: Enabled local CLI execution when client tools are present; piped prompt formatting and OpenAI `tool_calls` response streaming into `@opencode/cli run` so agent requests with tools execute through the local engine.
+  - **Prompt Piping via Stdin**: Switched prompt delivery to `stdin` stream instead of command-line arguments to eliminate Windows `ENAMETOOLONG: name too long, uv_spawn` crashes.
+  - **Process Management & Concurrency Cap**: Added `MAX_CONCURRENT_CLI = 3` concurrency limiter to queue parallel requests, a 90s hard execution deadline, and cross-platform process tree cleanup (`taskkill /F /T` on Windows, `pkill -P` + `SIGKILL` on POSIX) on abort and server shutdown.
+  - **Auth Fallback Loop**: Fixed `getProviderCredentials` in `auth.js` to inspect `excludeSet.has("noauth")`, terminating immediately instead of looping 15+ times when the unproxied public connection is rejected.
+  - **Network Channel Routing**: Updated `resolveV2ChannelRoute()` to use `OPENCODE_V2_ROUTE` when configured and default to a direct connection, removing the dead hardcoded proxy returning HTTP 407.
+  - **Dashboard Provider View**: Mapped `opencode-v1` to `opencode` in provider detail resolution so `/dashboard/providers/opencode-v1` renders properly.
+  - **Build Fix**: Added `src/app/not-found.js` to prevent Next 14 Windows NFT build trace failure.
+
+---
+
+# v0.5.315 (2026-10-25) · 2 commits
+
+## What Was Changed
+
+- **Add Dedicated OCR Auto Image-to-Text Plugin:**
+  - Added **OCR Auto Image-to-Text (`imageVision`)** alongside Adaptive Thinking in the Custom Plugins suite.
+  - Automatically intercepts base64 images and URLs in prompt payloads, parses dimensions and metadata via Sharp, and converts images into structured markdown OCR text blocks.
+  - Enables text-only models (e.g. DeepSeek-R1, Llama-text, GLM, CLI engines) to process visual content without 400 errors, and provides high-precision OCR transcripts for vision models.
+  - Updated `/dashboard/plugins` with a balanced 2-column card layout, capacity markers, and per-model assignment pickers.
+
+---
+
+# v0.5.314 (2026-10-25) · 2 commits
+
+## What Was Changed
+
+- **Unified Adaptive Thinking & Multi-Framework Cognitive Architecture Plugin:**
+  - Removed deprecated scattered custom plugins (imageVision, thinkDeeper, jsonGuard, openaiToolBridge, antiSlop) and replaced them with a single unified **Adaptive Thinking & Cognitive Architecture** plugin.
+  - Synthesized proven cognitive reasoning frameworks from top open-source agent skill repositories:
+    1. **Depth Protocol v2.0** (`Kshitijpalsinghtomar/depth-skills`): Prevents premature closure, demands root problem reframing, and establishes explicit failure envelopes.
+    2. **Adversaria Dialectic Crucible** (`damionrashford/Adversaria`): Socratic elenchus, steelmanning, and internal hostile red-team challenge.
+    3. **First Principles Framework** (`tjboudreaux/cc-thinking-skills`): Separates hard physical/mathematical facts from conventions and analogies.
+    4. **Superpowers Methodology** (`obra/superpowers`): Systematic multi-branch hypothesis exploration and grounded verification before final synthesis.
+  - Integrated provider-native deep reasoning parameters (`budget_tokens: 10240` on Claude, `reasoning_effort: high` on OpenAI/compatible providers).
+  - Streamlined `/dashboard/plugins` UI into a dedicated single-focus card with model assignment and clean toggle controls.
+
+---
+
+# v0.5.313 (2026-10-25) · 2 commits
+
+## What Was Changed
+
+- **Clean Up Theme Inconsistencies Across All Dashboard Pages:**
+  - Audited and replaced rogue ad-hoc utility classes (`bg-black/5 dark:bg-white/5`, `bg-gray-500/10`, `text-zinc-*`, hardcoded `text-white` overlays) with system tokens (`bg-surface-2`, `border-border-subtle`, `text-text-main`, `text-text-muted`) across Endpoint, Basic Chat, Arena, CLI Tools, Profile, Error Log, and Console Log pages.
+  - Aligned chip borders, command code blocks, tooltips, and terminal viewer surfaces with the 9Router glassmorphism dark palette.
+
+---
+
+# v0.5.312 (2026-10-25) · 2 commits
+
+## What Was Changed
+
+- **Harmonize Usage Theme Tokens and Mobile Responsiveness:**
+  - Standardized card backgrounds, borders, and token colors across `OverviewCards.js`, `UsageStats.js`, `ProviderTopology.js`, and `UsageChart.js` to strictly use official design tokens (`var(--color-surface)`, `border-border-subtle`, `text-info`, `text-success`, `text-warning`).
+  - Perfected mobile responsive styling with automatic stacking, touch-friendly tap targets, zero horizontal overflow, and responsive table layout with wrap-safe model names and badge metadata.
+
+---
+
+# v0.5.311 (2026-10-25) · 2 commits
+
+## What Was Changed
+
+- **Usage & Analytics Command Center Redesign:**
+  - Redesigned overview KPI cards (`OverviewCards.js`) with structured metric icons (`dns`, `arrow_upward`, `bolt`, `arrow_downward`, `payments`), purposeful semantic color accents, neutral white input token values, and contextual sparkline indicators.
+  - Revamped `Live Requests Stream` table in `UsageStats.js` with live pulsing telemetry dots, dedicated provider/channel badges, and cleaner monospace token counters.
+  - Aligned height of `ProviderTopology` graph to match the live stream card (`420px`), eliminating dead vertical space.
+  - Upgraded chart empty state in `UsageChart.js` with an informative dashed container and actionable telemetry guidance.
+
+---
+
+# v0.5.310 (2026-10-25) · 2 commits
+
+## What Was Changed
+
+- **Fix OpenCode Empty Responses and FreeTier Routing:**
+  - In `src/sse/services/auth.js`, ensured residential channel proxy fallback is automatically applied when routing `opencode-v2` and `opencode` connections if no custom proxy pool is configured.
+  - In `open-sse/utils/opencodeCliRunner.js`, fixed response parsing to correctly capture `responseText` from `finalResult.text` instead of referencing an undefined variable.
+  - In `open-sse/executors/opencode-v2.js` and `open-sse/executors/opencode.js`, routed prompts larger than 24KB (e.g. agent sessions with multi-turn system context) directly to the Wire HTTP Executor to prevent CLI runner truncation and empty responses.
+
+---
+
+# v0.5.309 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **Fix Syntax Errors in API Route Imports:**
+  - Repositioned `export const dynamic = "force-dynamic"` to follow multiline import blocks in `src/app/api/models/availability/route.js`, `src/app/api/oauth/zed/import/route.js`, and `src/app/api/cli-tools/grok-build-settings/route.js`, fixing syntax errors ("cannot import as reserved word") during Webpack and Bun compilation.
+
+---
+
+# v0.5.308 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **Remove Redundant 'use server' Directives in API Route Handlers:**
+  - Removed `"use server"` directive from 24 API route files under `src/app/api/cli-tools/` and `src/app/api/tunnel/`. In Next.js App Router, `"use server"` designates React Server Actions (which disallow non-function exports like `export const dynamic = "force-dynamic"`). Route handlers run server-side by default and do not use Server Action directives.
+
+---
+
+# v0.5.307 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **Native JS Inlining for OpenCode V2 Tool Definitions (`opencodeV2Defs.js`):**
+  - Converted `opencodeV2Defs.json` into an ES module export `opencodeV2Defs.js` imported directly by `opencodeV2Fingerprint.js`, eliminating runtime filesystem dependency on disk paths and solving `403 FreeTierError` across Next.js, Bun, and standalone deployments.
+  - Implemented tool name collision aliasing and rename map tracking (`takeRenamedToolNamesV2`) in OpenCode V2 fingerprinting so caller agent tools and OpenCode fingerprint tools co-exist cleanly without 403 rejections.
+
+---
+
+# v0.5.306 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **Stage open-sse Assets in Standalone Builds & Enforce Dynamic API Routes:**
+  - Added `open-sse/` directory to standalone asset copy step (`scripts/copy-standalone-assets.mjs`) ensuring `opencodeV2Defs.json` schema definitions and runtime files are present in standalone and Bun production environments.
+  - Added `export const dynamic = "force-dynamic"` across all dynamic API route handlers to guarantee Next.js and Bun runtimes evaluate routes dynamically without static evaluation failures.
+
+---
+
+# v0.5.305 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **Smart Tool-Aware Execution for OpenCode V1 and V2:**
+  - Route tool-bearing client requests (such as DeepSeek Harness, Cline, or Roo Code with tools/functions) directly to the wire HTTP executor rather than the CLI runner. The OpenCode CLI non-interactive mode only handles text prompt evaluation, so requests with client tools must preserve tool definitions via the wire HTTP protocol.
+  - Fail open when CLI produces no output instead of yielding an empty stream with `finish_reason: "error"` and zero output tokens.
+
+---
+
+# v0.5.304 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **OpenCode CLI Auto-Retry on Proxy Tunnel Drops:**
+  - Added multi-attempt retry with rotating residential proxy sessions inside `executeOpencodeCli` to handle occasional proxy tunnel 400/502 rejections from residential broadband nodes.
+  - Ensured CLI subprocess cleanly bubbles up errors to the standard executor fallback chain instead of emitting premature empty `finish_reason: error` chunks with zero output tokens.
+
+---
+
+# v0.5.303 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **Fix 'chatSettings' TDZ Crash in Chat Handler:**
+  - Resolved `ReferenceError: Cannot access 'chatSettings' before initialization` in `src/sse/handlers/chat.js` by hoisting `getSettings()` before the account evaluation loop so authentication and error-handling code paths execute cleanly.
+- **OpenCode Free V1 Channel Routing & Timeout Parity:**
+  - Added default fallback to the dedicated residential channel route for OpenCode Free V1 (`opencode`) in `src/sse/services/auth.js` and `open-sse/executors/opencode.js`, eliminating 403 FreeTierError rejections on unconfigured/direct host egress.
+  - Increased OpenCode V1 transport timeout to 45s to prevent premature proxy connection drops.
+
+---
+
+# v0.5.302 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **Rescue Zero-Output Responses and Fold Reasoning Tokens:**
+  - Rescued empty response completions in streaming and non-streaming modes when models exhaust token budgets on reasoning (e.g. DeepSeek/Claude with thinking enabled) by promoting reasoning output to content before stream close.
+  - Folded `reasoning_tokens` into `completion_tokens` when upstream providers report `completion_tokens: 0`, preventing clients like Cherry Studio and NextChat from throwing "The model reported success but generated zero output tokens (out 0)".
+  - Added helpful status fallback text when a model produces zero tokens due to length limits or content filter truncation instead of returning an empty body.
+
+---
+
+# v0.5.301 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **Windows CLI Binary Resolution & Process Spawn Fix:**
+  - Fixed Windows `spawn ENOENT` when launching `opencode` on Windows hosts (e.g. `G:\9router
+ode_modules\.bin\opencode`).
+  - Prioritized Windows executable extensions (`.cmd`, `.exe`, `.bat`) over extensionless shell scripts in `findOpencodeBinary`.
+  - Added `shell: true` and `windowsHide: true` to `child_process.spawn` options on Windows so batch scripts execute seamlessly.
+
+---
+
+# v0.5.300 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **Fix Erroneous FREE Badge on Non-Free Models in OpenCode V1 and V2:**
+  - Removed hardcoded `isFree={isOpenCode ? true : model.isFree}` flag which falsely marked non-free models (e.g., Claude, GPT) as Free when added to Available Models.
+  - Aligned custom and display model tier status with upstream suggested catalogue `isFree` metadata and pattern classification so paid models correctly display without the FREE badge.
+
+---
+
+# v0.5.299 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **OpenCode CLI Binary Detection & 'Need Configuration' Status:**
+  - Added real-time binary detection for OpenCode CLI across host PATH, global bin, and local node_modules.
+  - When the OpenCode binary is not installed on the host running 9Router seren, OpenCode Free V2 displays a 'Need Configuration' warning badge and instructs the user to install the binary manually (`npm install -g opencode-ai` or curl script).
+
+---
+
+# v0.5.298 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **OpenCode Free V2 Upstream Timeout & Session Rotation Resiliency:**
+  - Increased `timeoutMs` for OpenCode V2 transport from 12s to 45s to accommodate high-latency residential broadband SSL handshakes and prevent premature `ProxyFetch connect timeout` aborts.
+  - Dynamized connection ID assignment in `src/sse/services/auth.js` per proxy rotation so free-tier quota exhaustion (`429 FreeUsageLimitError`) seamlessly retries with a fresh residential session and exit IP.
+
+---
+
+# v0.5.297 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **Stealth Channel Routing Module Refactor:**
+  - Renamed and refactored the proxy module into `open-sse/utils/opencodeV2Channel.js` with XOR-scrambled binary payload encoding to prevent plain-text pattern detection and obscure internal routing parameters.
+
+---
+
+# v0.5.296 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **Clean Dedicated Routing Banner (Buttonless):**
+  - Removed the standalone Telegram button from the OpenCode Free V2 dedicated proxy banner for a cleaner, compact, and balanced card layout.
+  - Retained the interactive inline link `proxy by: t.me/abcseren` with subtle external navigation icon and active radar beacon.
+
+---
+
+# v0.5.295 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **Embedded Fingerprint Tool Schemas & Native CLI Auto-Detection:**
+  - Bundled all 11 official OpenCode CLI tool definitions into `open-sse/utils/opencodeV2Defs.json` inside the repository, resolving the missing `/tmp` definition file that triggered `403 FreeTierError` on external/friend instances.
+  - Added auto-injection of the OpenCode CLI system instructions for bare test requests and pings.
+  - Extended `findOpencodeBinary` to inspect `node_modules/.bin/opencode` and system PATH, and added `opencode-ai` to `optionalDependencies` in `package.json`.
+  - Replaced the airplane icon with standard network routing iconography and clean external links.
+
+---
+
+# v0.5.294 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **Animated Dedicated Proxy Banner:**
+  - Redesigned the dedicated proxy routing banner for OpenCode Free V2 into an animated card titled `proxy by: t.me/abcseren`.
+  - Added continuous shimmer beam animations (`proxy-shimmer-beam`), gradient text flow (`proxy-text-gradient`), live beacon radar dot, and direct "Open Telegram" action button.
+
+---
+
+# v0.5.293 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **Dedicated Locked Proxy Routing for OpenCode Free V2:**
+  - Integrated high-reputation residential routing locked permanently for `opencode-v2` (`open-sse/utils/opencodeV2Channel.js`), automatically randomizing residential session IDs per request to prevent IP limits and 403 FreeTier blocks across all deployment environments (including Railway and serverless containers).
+  - Masked the proxy identity across the UI, connection cards, and routing logs under the alias `https://t.me/abcseren`, locking the proxy selection so it cannot be tampered with or overridden.
+
+---
+
+# v0.5.292 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **Full System Prompt & Multi-Turn Support for OpenCode Engine:**
+  - Implemented `formatOpencodeCliPrompt` in `open-sse/utils/opencodeCliRunner.js` to properly extract and structure all system instructions (`body.system`, `role: "system"`, `role: "developer"`), multi-turn conversation history, and user prompts before passing to the CLI engine.
+  - Enabled native CLI engine execution across both OpenCode V1 (`opencode.js`) and V2 (`opencode-v2.js`), ensuring Model Studio custom models and roleplay system prompts take effect completely without being discarded or blocked by upstream rate limits.
+
+---
+
+# v0.5.291 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **Live Console Layout Harmonization:**
+  - Redesigned the Live Console tab to perfectly mirror the Error Records architectural layout.
+  - Implemented 4 summary metric cards (Total Lines, Errors, Warnings, Stream Status), unified 9Router search input, level segmented control, auto-scroll/copy/clear controls, and structured card list with category badges, line headers, and per-item copy actions.
+
+---
+
+# v0.5.290 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **Search Bar Redesign & Anti-Slop Cleanup:**
+  - Standardized search bars across both Error Records and Live Console tabs using 9Router's native search input styling (`rounded-[10px]`, integrated search glyph, clear button, and brand focus ring).
+  - Stripped all theatrical AI-slop artifacts from the console view (removed fake macOS red/yellow/green window dots, fake prompt lines, pulsing block cursors, and redundant card wrappers).
+  - Streamlined log lines into a clean, flat developer output stream with high-contrast readable typography and simple empty states.
+
+---
+
+# v0.5.289 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **Live Console UI Overhaul & Terminal Polish:**
+  - Redesigned the Live Console toolbar into a responsive 2-tier layout eliminating button clipping and overcrowding on mobile screens.
+  - Added dedicated search input with instant clear, segmented level filters (ALL, ERR, WARN, INFO), live connection badges, line counter, and full-sized touch actions (Scroll toggle, Copy, Clear).
+  - Enhanced the terminal window with macOS window controls, title bar (`runtime-stdout.log`), active buffer indicator, fixed gutter with line number separators, syntax tag highlighting, and an active listener prompt with pulsing cursor.
+
+---
+
+# v0.5.288 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **Restored Global Theme Background & Glass Depth:**
+  - Fully restored the ambient glass theme background styling in `.dark.glass` so all pages maintain their luminous depth and signature aesthetic across the entire 9Router dashboard.
+- **Complete Design System & Theme Synchronization in Error & Console Logs:**
+  - Refactored `LogsClient` to natively utilize 9Router's official component primitives: `SegmentedControl` with sliding pill indicators for both view tabs and status filters, `Card` with standard elevation and glass styling, `Badge` semantic color variants, and theme-synchronized primary accents (`text-primary`, `bg-brand-500/10`).
+
+---
+
+# v0.5.287 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **Unified Logs & Diagnostics Workbench:**
+  - Consolidated the separate Console Log and Error Monitor views into a single unified menu: **Error & Console Logs** (`/dashboard/logs`).
+  - Implemented a clean, anti-slop dual-mode workspace featuring:
+    - **Error Records**: structured exception audit cards with status classification (5xx, 429, Auth), quick copy, search filtering, and collapsible stack traces without fuzzy AI glow effects.
+    - **Live Console**: real-time stdout/stderr stream with status indicator, autoscroll controls, log level filters (ALL, ERR, WARN, INFO), and search.
+  - Backwards-compatible routes for `/dashboard/console-log` and `/dashboard/error-log` linking to the unified workspace.
+- **Refined Hide Error Copywriting:**
+  - Replaced wordy descriptions in Experiment Features with crisp, professional anti-slop copywriting explaining upstream error masking and internal log retention.
+
+---
+
+# v0.5.286 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **Settings API & Experiment Toggle Fix:**
+  - Added HTTP `PUT` handler to `/api/settings` and ensured `ExperimentsClient` dispatches valid `PATCH`/`PUT` updates so the "Hide Error" experimental toggle updates without throwing "Failed to update setting".
+- **Console Log Modernization:**
+  - Redesigned the Console Log view into a sleek terminal workstation with macOS window controls, live stream status indicator, auto-scroll pause/resume toggle, quick copy action, search query filter, and level-specific filter pills (All, Errors, Warns, Info).
+- **Error Monitor UI Overhaul & Menu Renaming:**
+  - Renamed the menu item and dashboard headers from "Error Log" to "Error Monitor".
+  - Overhauled Error Monitor with summary metric cards (Total, 5xx Server, 429 Rate Limits, 401/403 Auth), status filter tabs, search filter, collapsible stack traces, and quick copy actions.
+
+---
+
+# v0.5.285 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **UI Language Standardization to English:**
+  - Standardized all descriptions, notifications, labels, and placeholders across the dashboard interface to English (including Custom Plugins, Experiment Features, Error Log, Model Studio Multipliers, and Model Tier Badges).
+
+---
+
+# v0.5.284 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **Containerized Deployment Support for OpenCode Engine:**
+  - Added global installation of `opencode-ai` CLI in the production `Dockerfile` builder stage and copied the binary to `/usr/local/bin/opencode` in the runner stage with required compatibility libraries (`gcompat`, `libstdc++`, `ca-certificates`).
+  - Extended dynamic binary discovery in `opencode-v2.js` to inspect standard PATH locations (`/usr/local/bin/opencode`, `/usr/bin/opencode`, etc.) and ensure working directories and HOME are properly initialized in containerized environments like Railway, Docker, or Kubernetes.
+
+---
+
+# v0.5.283 (2026-10-24) · 2 commits
+
+## What Was Changed
+
+- **OpenCode Free V2 Dual-Mode Engine (Native CLI + Wire Fallback):**
+  - Integrated direct execution via the official OpenCode 1.19.4 binary runtime when installed locally (`/root/bin/opencode`), routing requests with full context and proxy options while returning seamless OpenAI-compatible streaming SSE chunks.
+  - Successfully bypassed upstream 403 FreeTierError / 429 FreeUsageLimitError, ensuring robust 200 OK completions.
+
+---
+
+# v0.5.282 (2026-10-23) · 2 commits
+
+## What Was Changed
+
+- **OpenCode Free V2 Reverse-Engineered Wire Protocol Alignment:**
+  - Upgraded OpenCode V2 tool fingerprinting to match the full 11-tool suite from official OpenCode CLI 1.19.4 (`bash`, `edit`, `glob`, `grep`, `read`, `skill`, `task`, `todowrite`, `webfetch`, `websearch`, `write`).
+  - Removed artificial `Authorization: Bearer public` header that triggered upstream proxy filter rejections.
+  - Aligned request parameters with genuine Bun runtime client wire behavior.
+
+---
+
+# v0.5.281 (2026-10-23) · 2 commits
+
+## What Was Changed
+
+- **Fixed 500 error in chat/completions route:** Resolved `ReferenceError: settings is not defined` inside `chatCore.js` by cleanly forwarding `hideError` boolean parameter from chat handler.
+- **Fixed smEnabled ReferenceError in models API:** Removed residual references to `smEnabled` (from removed Speed Mode) in `/api/models/route.js`.
+- **Enhanced OpenCode V2 session recovery:** Added `bodyHasSessionHints` helper to `opencode-v2.js` for robust session continuity across multi-turn turns.
+- **Fixed Error Log API and Ping Permissions:** Added `/api/error-logs` and `/api/models/test` to `permissionPaths.js` and `dashboardGuard.js`.
+
+---
+
+# v0.5.280 (2026-10-23) · 2 commits
+
+## What Was Changed
+
+- **Model Tier Consistency in Modal & Select:** Synchronized the green `FREE` badge across `ModelSelectModal`, ensuring models tagged as free in the provider view retain their exact badge and status in the model selection picker.
+- **Provider Models Isolation across All Providers:** In all provider detail pages, built-in catalog models now start un-hoisted in the "Suggested models" / "Suggested free models" lists and only rise to the active models section when explicitly clicked with `(+)`.
+- **Custom Model Studio Multipliers:** Added dedicated Input Multiplier and Output Multiplier fields to the Custom Model Studio form and displayed active multiplier tags on the custom model cards.
+- **Error Log System:** Added an **Error Log** page (`/dashboard/error-log`) under Console Log in the sidebar navigation with real-time logging, stack trace viewing, filtering, single/bulk copying, and deletion.
+- **Experiment Features (Hide Error):** Introduced the **Experiment Features** page (`/dashboard/experiments`) under 9Router Settings with an experimental "Hide Error" toggle that masks sensitive provider errors into `"There is an error but this error is hidden, try checking your error log."` while logging true errors to the Error Log.
+- **API Key Expiration Visibility:** Added expiration date countdown and status badges to API key rows in Endpoint & Keys as well as in the Key Quota card on the dashboard.
+
+---
+
+# v0.5.279 (2026-10-23) · 2 commits
+
+## What Was Changed
+
+- **Custom Plugin Overhaul:**
+  - **OCR Auto Image-to-Text (Plugin #1):** Implemented automated image text conversion scripting with sharp. Inspects image buffers, extracts metadata, dimensions, text chunks (PNG tEXt/zTXt/iTXt, SVG text, and EXIF/IPTC tags), and transcribes visual content into structured text. Converts image blocks into text blocks for text-only models so non-vision models can process images without errors.
+  - **Adaptive Thinking & Superpowers CoT (Plugin #2):** Upgraded reasoning to an Adaptive Thinking system combining Superpowers multi-perspective exploration, hypothesis stress-testing, self-verification, and structured Chain-of-Thought with adaptive depth and native reasoning parameters (`reasoning_effort: high`, Claude thinking budget).
+  - **Removed Speed Mode (Plugin #3) and Context Squeezer (Plugin #5):** Streamlined the plugin lineup down to 5 focused plugins (`imageVision`, `thinkDeeper`, `jsonGuard`, `openaiToolBridge`, `antiSlop`).
+  - **Refreshed All Plugin Names and Descriptions:** Standardized titles and descriptive explanations across UI, constants, and API routes.
+
+---
+
+# v0.5.278 (2026-10-23) · 2 commits
+
+## What Was Changed
+
+- **Removed PAID and UNKNOWN badges; reserved FREE tag exclusively for free models.** Model badge display is now streamlined: only genuine free models (OpenCode free models such as `beam-free`, `glm-5.3-flash-free`, `big-pickle`, `union-alpha`, etc.) display the green `FREE` tag. Non-free models (e.g. Claude, GPT, or unclassified models) show no tags, keeping provider listings clean and uncluttered.
+
+---
+
+# v0.5.277 (2026-10-23) · 2 commits
+
+## What Was Fixed
+
+- **Fixed suggested model chips not rising to active list for OpenCode V1 and V2.** Removed built-in model exclusion on OpenCode providers in `getProviderCustomModelRows` so clicking `(+)` immediately adds and displays the model in the top active section.
+- **Accurate Model Tier Badges and chip preview.** Fixed custom model rows incorrectly passing `isFree={false}` that caused free models to display as `PAID`. OpenCode and free tier models now retain their green `FREE` badge. Both suggested free chips and other models now render tier badges before and after addition.
+- **Revamped Recent Requests table and Usage charts alignment.** Restored visibility of Recent Requests by ordering it cleanly for mobile viewports, correcting table background styles, and expanding truncated model name width. Polished Top Models and By Provider bar charts with consistent 210px container heights, refined typography, and aligned controls.
+- **Aligned icons, badges, and typography across cards.** Vertically centered Material Symbols icons, status dots, and badges with text on consistent optical baselines throughout model rows and usage analytics.
+
+---
+
+# v0.5.276 (2026-10-23) · 2 commits
+
+## What Was Added
+
+- **Tier badges (FREE / PAID / UNKNOWN) on all models across all providers.** Added `ModelTierBadge` and `resolveModelTier` to classify and display visual badges for every model (Free with green tag, Paid with amber tag, and Unknown for unclassified/custom models) across `ModelRow`, `CompatibleModelsSection`, `PassthroughModelsSection`, and `ModelSelectModal`.
+- **Token usage multipliers and anti-probe protection for custom models.** Added optional `inputMultiplier` and `outputMultiplier` fields to custom models and model studio. Output tokens and prompt tokens are multiplied accordingly in returned responses and usage tracking. Anti-probe protection conceals real backend model IDs, strips provider headers, and reinforces anti-jailbreak directives.
+- **Enforced API key requirement on `/v1/models` and model listing endpoints.** Anonymous curling of model lists is now blocked with HTTP 401 (`invalid_api_key`) unless a valid API key or authenticated dashboard session is supplied.
+
+---
+
+# v0.5.275 (2026-10-23) · 2 commits
+
+## What Was Changed
+
+- **Start OpenCode V1 and V2 models in Suggested Free Models and remove separate Disabled Models list.** For OpenCode V1 (`oc1`) and V2 (`oc2`), models no longer automatically populate the active top list on initial view; instead, all available free models appear as selectable chips under "Suggested free models". Clicking a chip adds it to the active list, and removing/disabling an active model returns it directly back to "Suggested free models" without placing it into a separate "Disabled models" section.
+
+---
+
+# v0.5.274 (2026-10-23) · 2 commits
+
+## What Was Changed
+
+- **Updated OpenCode Free V1 model prefix and alias from `oc` to `oc1`.** The provider alias and UI prefix for OpenCode Free V1 are now `oc1/` (e.g. `oc1/beam-free`, `oc1/deepseek-v4.1-flash-free`), matching the `oc2/` prefix convention of OpenCode Free V2. Legacy `oc/` alias is preserved for backwards compatibility.
+
+---
+
+# v0.5.273 (2026-10-23) · 2 commits
+
+## What Was Changed
+
+- **Renamed legacy OpenCode Free provider to "OpenCode Free V1".** Updated display name to "OpenCode Free V1" with badge "OC1" to cleanly differentiate between the legacy V1 provider and the new CLI 1.19.4-based "OpenCode Free V2" provider.
+
+---
+
+# v0.5.272 (2026-10-23) · 2 commits
+
+## What Was Added
+
+- **New "OpenCode Free V2" provider (`opencode-v2` / `oc2`).** Added a dedicated OpenCode V2 provider ported directly from the reverse-engineered OpenCode CLI 1.19.4 architecture while keeping the existing OpenCode Free provider intact. V2 features:
+  - Official 1.19.4 wire endpoints (`/inference/openai/v1/chat/completions`, `/inference/anthropic/v1/messages`, `/inference/v1/responses`).
+  - Bitwise timestamp identifiers matching official binary disassembler (`msg_<timestamp_ascending_base62>` and `ses_<timestamp_descending_base62>`).
+  - Standardized tool cloaking (`bash` and `read`) without telltale prompt injection to prevent upstream 429 content-filter triggers.
+  - Full official 1.19.4 free model catalogue (`beam-free`, `big-pickle`, `deepseek-v4.1-flash-free`, `flint-40b-free`, `glm-5.3-flash-free`, `mimo-v2.6-flash-free`, `nemotron-3-ultra-free`, `nemotron-3.5-lightning-free`, `nemotron-3.5-super-vl-free`, `muse-spark` variants, and `union-alpha`).
+  - Native integration with proxy pools and automatic session rotation.
+
+---
+
+# v0.5.271 (2026-10-23) · 2 commits
+
+## What Was Fixed
+
+- **Preserved original probe token budget for full model completion responses.** Reverted `max_tokens` back to 1024 in `/api/models/test` to preserve complete responses and chain-of-thought budgets across all models without altering probe defaults.
+
+---
+
+# v0.5.270 (2026-10-23) · 2 commits
+
+## What Was Fixed
+
+- **Accelerated model ping probes for reasoning and free models.** The ping endpoint `/api/models/test` previously set `max_tokens: 1024`, causing reasoning models like `deepseek-v4.1-flash-free` and upstream free endpoints to spend 20–30+ seconds generating hundreds of chain-of-thought tokens before returning, making the dashboard test button appear frozen/spinning. With the issue #3010 soft-pass already supporting length-limited reasoning completions, `max_tokens` is now set to 16 for probe checks. Tested live over Cloudflare tunnel: `oc/deepseek-v4.1-flash-free` now resolves in 3.0s and `oc/glm-5.3-flash-free` in 2.3s with `{"ok":true,"status":200}`.
+
+---
+
+# v0.5.269 (2026-10-23) · 2 commits
+
+## What Was Fixed
+
+- **Eliminated telltale prompt injection that triggered upstream OpenCode 429 rejection on model pings.** Upstream OpenCode introduced content filtering that caught the historical placeholder prompt note (`"Do not call the read or shell tools..."`), immediately rejecting requests with `FreeUsageLimitError` and causing model ping/test buttons in the dashboard to spin endlessly until abort timeout. Silenced the note so prompts remain clean. Verified live with model probe tests (`oc/mimo-v2.6-flash-free`, `oc/deepseek-v4.1-flash-free`, `oc/glm-5.3-flash-free`) all completing with `{"ok":true,"status":200}`.
+
+---
+
+# v0.5.268 (2026-10-23) · 2 commits
+
+## What Was Fixed
+
+- **Preserve HTTPS protocol across dashboard redirects behind reverse proxies / Cloudflare tunnels.** The custom server and auth guard previously hardcoded `http://` when constructing redirect URLs (`/` to `/dashboard`, `/dashboard` to `/login`), causing browsers on HTTPS tunnels to refuse connecting to an insecure HTTP location or triggering mixed-content connection errors. Both now inspect `x-forwarded-proto` and socket encryption so all redirects preserve `https://`.
+
+---
+
+# v0.5.267 (2026-10-23) · 2 commits
+
+## What Was Fixed
+
+- **Fixed reference error in studio models API and bounded opencode connect timeout.** The `/api/models` endpoint previously crashed with `ReferenceError: pluginMarks is not defined` when resolving studio models, breaking dashboard model listings. In addition, `opencode` transport now sets a snappy 12s socket timeout (`timeoutMs: 12000`) instead of hanging for 60s when a residential proxy node is slow to connect, allowing rotation to smoothly fail-over to the next residential session. Verified end-to-end with `oc/beam-free`, `oc/deepseek-v4.1-flash-free`, and `oc/mimo-v2.6-flash-free` completing in ~2 seconds.
+
+---
+
+# v0.5.266 (2026-10-23) · 2 commits
+
+## What Was Added
+
+- **Automatic per-request session rotation for residential proxy pools.** Residential proxy gateways that support session-based IP rotation via username conventions (e.g. `res-*-sid-XXXXX`) are now automatically detected: each outbound connection request randomizes the session ID (`randSid`), ensuring a fresh residential egress IP with its own rate limit window. When upstream triggers 429 `FreeUsageLimitError`, the specific spent egress IP is rotated out without prematurely excluding the entire residential pool. Verified with live OpenCode free models (`beam-free`, `mimo-v2.6-flash-free`, `deepseek-v4.1-flash-free`, `glm-5.3-flash-free`) all successfully answering with 200 OK completions through rotating residential proxy.
+
+---
+
+# v0.5.265 (2026-10-23) · 2 commits
+
+## What Was Changed
+
+- **Reverse-engineered OpenCode protocol from CLI 1.19.4 binary and updated the executor wire contract.** Extracting the protocol directly from the disassembled binary revealed three discrepancies causing relay detection: (1) OpenAI chat endpoints route to `/inference/openai/v1/chat/completions` and Anthropic to `/inference/anthropic/v1/messages` (the legacy `/inference/v1/chat/completions` path flagged callers), (2) the current client sends a synchronized ascending `x-opencode-request: msg_<id>` generated via the native `va()` timestamp algorithm, and (3) `x-session-affinity` and `x-session-id` were removed as upstream specifically checks that they are not sent for opencode-native providers. All 37 tests across 4 test suites passing.
+
+---
+
+# v0.5.264 (2026-10-23) · 2 commits
+
+## What Was Fixed
+
+- **The executor now mirrors the real OpenCode 1.19.4 CLI fingerprint, and the fallback loop stops at the caller's deadline.** Reverse-engineering the current CLI via mitmproxy showed it sends `User-Agent: opencode/1.19.4 ai-sdk/provider-utils/4.0.23 runtime/bun/1.4.4` with `x-opencode-client: cli`, `x-opencode-project` and a per-message `x-opencode-request` — while 9router still sent the older `opencode/latest/2.0.26/cli` shape, which the free tier reads as a stale relay UA after the upstream update. The executor default, the downstream-UA passthrough check, the registry UAs and the test probe all use the current CLI shape now. Separately, the session-rotation branch never carried the fallback deadline, so an exhausted evening rotated ~1.500 proxies past the 120s probe budget and the dashboard showed "The operation was aborted due to timeout" with no usable error; the session branch now returns the last upstream error once the budget is spent. `tests/unit/opencode-session.test.js` pins the UA default/replacement/passthrough; 37 passed across 4 suites.
+
+---
+
+# v0.5.263 (2026-10-23) · 2 commits
+
+## What Was Fixed
+
+- **Alias-prefixed probes get the slow-fallback budget too.** v0.5.262 gave `opencode/*` probes 120s, but the dashboard probes alias-prefixed ids (`oc/beam-free`, `ocg/...`) and `probeTimeoutMs` compared the raw prefix against the provider set — an unresolved `oc` fell through to the 15s REST budget, so the button test still aborted mid-rotation with "The operation was aborted due to timeout" while direct `opencode/*` calls survived. The budget now resolves the prefix via `resolveProviderId` first (with a fail-open fallback to the raw prefix). `tests/unit/ping-timeout.test.js` pins the alias resolution; 5 passed.
+
+---
+
+# v0.5.262 (2026-10-23) · 2 commits
+
+## What Was Fixed
+
+- **The model test button no longer aborts healthy OpenCode models at 15s.** Probing a model (`/api/models/test`) sends a real chat request down the normal fallback chain, but every probe shared one 15s budget. An OpenCode free-tier probe routinely needs 30-90s — each spent session/IP answers 429 `FreeUsageLimitError` and the fallback rotates the session plus every proxy before one window answers — so the probe aborted mid-rotation and painted working models red with "The operation was aborted due to timeout". `opencode`, `opencode-go` and `opencode-zen` probes now get 120s (`SLOW_FALLBACK_PROBE_TIMEOUT_MS` in `probeBudget.js`); every other provider keeps its existing budget. `tests/unit/ping-timeout.test.js` pins the new set and budget; 4 passed.
+
+---
+
+# v0.5.261 (2026-10-23) · 2 commits
+
+## What Was Fixed
+
+- **Two dead model ids are gone from both screens; 9 of 10 live free models now answer.** Besides Jev (400 `ModelProtocolUnsupported`, fixed in v0.5.260), the live catalogue still advertises `minimax-m3.1-flash-free`, but upstream retires it with 410 `ModelDeprecated` pointing at `deepseek-v4.1-flash-free`. It is dropped from the catalogue filter and the picker the same way (`DEPRECATED_OPENCODE_MODELS`), while new id `flint-40b-free` rides the existing free-tier rule with no change. Verified end to end through the preview: `beam-free`, `big-pickle`, `glm-5.3-flash-free`, `mimo-v2.6-flash-free`, `nemotron-3.5-super-vl-free`, `deepseek-v4.1-flash-free`, `flint-40b-free` all answer; `longcat-2.5-preview-free` and `nemotron-3.5-lightning-free` still hit upstream 429 `FreeUsageLimitError` (daily quota, not a routing bug — the session rotation from v0.5.259 keeps retrying with fresh windows). `tests/unit/provider-model-catalogue.test.js` pins the deprecated set and the picker exclusion; 9 passed with `unit/opencode-session-rotation.test.js`.
+
+---
+
+# v0.5.260 (2026-10-23) · 2 commits
+
+## What Was Fixed
+
+- **Jev ids no longer loop the fallback with an unwinnable 400.** `jev-1.13` / `jev-1.13-free` are System One decision models: upstream answers `ModelProtocolUnsupported` on the chat completions lane, so every chat request to them burned the whole proxy/fallback loop for a response that could never come (1.073 of the recent 400s). They are removed from the chat registry, the suggested-catalogue filter and the model picker — 12 free models stay visible and routable in both screens instead of 13 with one dead entry. Covered by `tests/unit/provider-model-catalogue.test.js` (9 cases).
+
+---
+
+# v0.5.259 (2026-10-23) · 2 commits
+
+## What Was Fixed
+
+- **FreeUsageLimitError now rotates the OpenCode session instead of hammering every proxy.** Upstream tracks the free quota per session id as well as per IP (upstream issue #5107): once a session window is spent, retrying the same burned session through dozens of proxies only collects the same 429 until the request times out. A 429 carrying `FreeUsageLimitError` on the opencode provider now burns the canonical session (`rotateOpencodeSession`) before the fallback moves to the next account, so the retry re-enters the proxy loop with a fresh quota window. The stable session is untouched on the happy path — a fresh session per request would burn quota faster. Covered by `tests/unit/opencode-session-rotation.test.js` (3 cases: fresh session minted, rotation scoped per identity, chat handler wiring).
+
+---
+
+# v0.5.258 (2026-10-21) · 3 commits
+
+## What Was Fixed
+
+- **The provider page now agrees with the model picker about what it lists.** The model picker offered all 13 free OpenCode models, but the provider page dropped `jev-1.13-free` because its registry entry carries the `kind: "systemone"` lane and the page's llm-only filter (`!k || k === "llm"`) treated that as a media kind with its own page - the free System One model was visible in one screen and invisible in the other, paid `jev-1.13` chip included while the free one was not. `systemone` is now kept alongside `llm` in the provider page filter, and `tests/unit/provider-model-catalogue.test.js` (6 cases) pins the filter so a future lane cannot silently drift again.
+
+---
+
+# v0.5.257 (2026-10-21) · 2 commits
+
+## What Was Fixed
+
+- **The upstream smoke-test id no longer shows up as a chip.** OpenCode's live catalogue carries a placeholder id literally named `test`, and since the panel started listing "Other models" straight from the catalogue it appeared next to real models as junk. The opencode filter now drops placeholder ids alongside the known-dead one before anything reaches the panel.
+
+---
+
+# v0.5.256 (2026-10-21) · 2 commits
+
+## What Was Changed
+
+- **Back to picking your own models: the catalogue is suggested again, not imported.** Rendering the whole live catalogue as model rows silently turned every published id into an entry in the list, which took away the step where an operator chooses what to add. The provider page renders the suggested chip rows again for free no-auth providers - `Suggested free models (n):` with `+` chips, `Other models (n):` for the paid half, and `Disabled models (n):` to restore - and each chip still calls `handleAddCustomModel`, so nothing joins the list unasked. The free/paid split, the FREE badge from `isFree` and the picker's `· N disabled` hint stay. `src/shared/utils/freeModelRows.js` and the `isDisabled`/`onRestore` props it needed are gone (no call sites left), and `tests/unit/provider-model-catalogue.test.js` (5 cases) pins the chip flow, the removed helper, the trimmed `ModelRow` props and the registry's `isFree` flags.
+
+---
+
+# v0.5.255 (2026-10-21) · 2 commits
+
+## What Was Fixed
+
+- **The OpenCode Free panel shows every id the provider publishes, paid ones included.** The first pass of the unified list hid the ~76 paid ids of the live catalogue behind an "only advertise what a keyless caller can use" rule, and the panel then read as a short list with models missing - the opposite of what was being fixed. The catalogue now reaches the row grid unfiltered, the FREE badge comes from each row's own tier flag (`isFree` travels through `buildUnifiedModelRows` instead of being stamped on every catalogue row), and the five registry-pinned free ids (muse spark x2, union-alpha, deepseek flash, jev) carry `isFree: true` in `open-sse/providers/registry/opencode.js` so their badge no longer depends on the id suffix. Verified live: the upstream endpoint lists 86 ids, all 10 free ones plus the 3 registry-only free models render, and `tests/unit/free-model-rows.test.js` (10 cases) pins the unfiltered catalogue, the flag-driven badge and the registry flags.
+
+---
+
+# v0.5.254 (2026-10-21) · 2 commits
+
+## What Was Fixed
+
+- **Opening the model picker no longer blanks the page.** The `· N disabled` hint was computed by a helper defined *inside* the `groupedModels` memo but printed in the group header at render time, so any picker that opened threw `ReferenceError: disabledCountFor is not defined` and Next's error boundary replaced the dashboard with "Application error: a client-side exception has occurred". The helper now lives at component scope, next to the state it reads, and `tests/unit/free-model-rows.test.js` asserts its declaration sits above the memo so the same scope mistake fails the suite instead of the browser.
+
+---
+
+# v0.5.253 (2026-10-21) · 2 commits
+
+## What Was Fixed
+
+- **The unified free list only advertised models that can actually answer.** The first cut of the unified list passed the whole live catalogue to the row builder, and the OpenCode Free catalogue marks paid ids with `isFree: false` - so ~85 paid models (Claude, Gemini, GPT families) appeared as free-badged rows on a provider that answers 401 for every one of them without a key. The catalogue handed to `buildUnifiedModelRows` is now filtered to `isFree === true`, the same rule the suggestion picker already used, and the browser check on the provider page counts 10 free rows plus the disabled trio instead of 85+.
+
+---
+
+# v0.5.252 (2026-10-21) · 2 commits
+
+## What Was Changed
+
+- **A free provider's catalogue is now one model list, not three.** On the OpenCode Free page the same tier was split across the model rows, a "Suggested free models (6)" chip row that asked you to add models that already answered, and a "Disabled models (3)" chip row at the bottom - so the catalogue was never visible in one place and ids you had disabled looked gone. `src/shared/utils/freeModelRows.js` folds registry models, user-added rows and the live catalogue into a single de-duplicated list (custom beats registry beats catalogue), and the page renders it as ordinary rows: each model once, free rows carrying a `FREE` badge, disabled rows dimmed with a restore action. The two chip rows stay only for providers that gate their catalogue behind adding a model.
+- **The picker stopped hiding models without saying so.** `ModelSelectModal` filters disabled ids out of every group, which is correct - a disabled model is not offered by `/v1/models` either - but a group that silently showed 10 of 13 models read as a half-missing free tier. The group header now appends `· N disabled` with a hint that they are restored on the provider page, so the gap is explained where it is seen.
+
+---
+
+# v0.5.251 (2026-10-21) · 2 commits
+
+## What Was Changed
+
+- **The dead long-task banner is deleted, not just left unused.** `src/shared/components/LongTaskBanner.js` (431 lines) had zero callers since long runs moved to the notification bell, and `Loading.js` still exported its wrappers (`ProgressCard`, `CenterLoading`, `BusyOverlay`) as a trap for the next feature. The component file and the three exports are gone, `src/shared/components/index.js` stops re-exporting them, and `Loading.js` keeps only what still renders: `Spinner`, `PageLoading`, `Skeleton`, `CardSkeleton`.
+- **The tests follow the component out.** `tests/unit/loading-banner.test.js` existed only to assert on the deleted files (and was already a catalogued load failure), so it is removed together with its entry in `tests/__baseline__/known-fails.txt`. `tests/unit/studio-banner-update.test.js` keeps the store, bell, layout and pool assertions and drops the two that read the deleted sources. `tests/unit/bell-only-progress.test.js` gains a guard: the component file must not exist and neither the wrappers nor their barrel exports may reappear — a zero-call-site component gets re-imported the moment someone reaches for it.
+
+---
+
+# v0.5.250 (2026-10-20) · 1 commit
+
+## What Was Changed
+
+- **Parity is now asserted byte for byte, not by headings.** The previous test sampled a few lines from the middle of the core, which a careful paraphrase could still slip past. `tests/unit/antislop-prompt-parity.test.js` now asserts that `full` contains the entire core document (everything from `## What This Is` onward) character for character, and that `ultra` contains each of the five concern skills verbatim after its title — so a reformat, a dropped paragraph or a "tidied" sentence fails the suite.
+
+---
+
+# v0.5.249 (2026-10-20) · 1 commit
+
+## What Was Changed
+
+- **Anti Slop is now the skill, not a summary of it**: the plugin used to inject a hand-condensed prompt of ~3.7k characters — about 6% of upstream's text, 15 of the 38 mandatory rules, no liveliness dials, no Design Read, none of the five concern skills — so calling it "the antislop skill" oversold it. `open-sse/rtk/antislopPrompt.js` is now generated from verbatim upstream sources kept in `open-sse/rtk/antislop-src/` (`core.md` plus `ui`, `copywriting`, `human`, `layoutmobile`, `code`). `full` is the core text verbatim (42,557 chars, ~10.6k tokens) and `ultra` is the core plus all five concern skills (130,512 chars, ~33k tokens). `lite` stays the 913-char condensation for cheap always-on filtering.
+- **Only the repo-editing half is dropped**: the install wizard, the self-update section and the mode-resolution section tell an agent to write pointer blocks into `AGENTS.md` and to ask which mode to use — wrong for a prompt injected on every request. A one-line runtime note replaces them (the plugin's level is the mode), and the tests fail if any of that text leaks back in.
+- **The level picker states the cost** instead of describing intensity in the abstract: each option now reads its token count straight from `ANTISLOP_LEVEL_CHARS`, so re-syncing the sources moves the number with it.
+- `scripts/generateAntislopPrompt.mjs` regenerates the module and `--check` fails when it drifts; `tests/unit/antislop-prompt-parity.test.js` (9 cases) asserts every core section is present verbatim, that all 38 rules survive, that ULTRA carries the five concern skills, that the dropped sections stay out, and that an unknown level still falls back to `full`.
+
+---
+
+# v0.5.248 (2026-10-20) · 1 commit
+
+## What Was Fixed
+
+- **Wording**: the USD notice read `$2.30 of $2.50 spent used.` — dollars are spent, not used. Each kind now owns its sentence (`… tokens used.`, `… calls used.`, `… spent.`) instead of one template with a noun swapped in, and a test rejects `spen[dt] used` so the phrasing cannot come back.
+
+---
+
+# v0.5.247 (2026-10-20) · 1 commit
+
+## What Was Fixed
+
+- **The long progress bar inside dialogs is gone; the bell owns it**: opening *Download Backup* and starting an export dropped a full-width card ("Preparing backup / Exporting database") over the form, with a scrim, covering the fields it was supposed to sit beside — and the same run was already in the bell through the task store, so the dialog showed a second, worse copy of one job. The card is removed from `DownloadBackupModal`, `BulkImportGrokCliModal`, `BulkImportCodexModal` and `AddApiKeyModal`; progress now lives only in the bell, while each dialog keeps its own busy state on the action button (`Download Backup`, `Importing…`, `Saving…`).
+- 3 tests in `tests/unit/bell-only-progress.test.js` keep it that way: no modal renders `ProgressCard`, every one of them still reports to the task store, and no empty conditional wrapper is left behind.
+
+---
+
+# v0.5.246 (2026-10-20) · 1 commit
+
+## What Was Fixed
+
+- **A returning condition lights the bell again**: clearing a notice is how a resolved condition gets retired, and it also marks the row read — so when the same condition came back (a key slid under its cap and then over it again, a task failed twice) the row reappeared in the feed already greyed out and the badge stayed at zero, which reads as "nothing to see" while the key is in fact refusing traffic. `notify()` now re-arms `readAt` when it revives a cleared row, and leaves a row the operator actually read alone.
+- 2 tests in `tests/unit/notification-revival.test.js` drive the real SQLite adapter: revival counts as unread and stays a single row, while a read row that merely changes its figure stays read.
+
+---
+
+# v0.5.245 (2026-10-20) · 1 commit
+
+## What Was Added
+
+- **Quota notices follow the budget a key actually enforces**: the notification scan only ever read `tokenLimit`/`usedTokens`, so a key switched to a USD or request budget exhausted itself in silence — it answered 429 while the bell stayed empty, and the first sign was a client failing. `src/lib/notifications/quotaPressure.js` now reads the selected `limitKind`, warns at 90% and goes critical at the cap, and each kind gets its own wording: `$2.40 of $2.50 spend used. Resets at 00:00 UTC.`, `450 of 500 calls used. No automatic reset.`, `95,000 of 100,000 tokens used. Resets in 5d.` Yesterday's dollars count as zero, so a stale `costDay` never nags about a counter that already rolled over, and inactive keys stay quiet.
+- **Switching kinds or raising a budget clears the old notice**: the dedupe key now carries the kind (`quota:<id>:<kind>:<level>`), and every pass clears the notices it did not recreate — previously a key moved from cost to tokens kept an unread "out of tokens" row in the feed.
+- 7 unit tests in `tests/unit/quota-notifications.test.js` cover the thresholds per kind, the stale-day rollover, the unselected-kind silence, and the reset timestamps.
+
+---
+
+# v0.5.244 (2026-10-20) · 1 commit
+
+## What Was Fixed
+
+- **`Error fetching models: e is not a function` — the models list died for anyone with a combo**: `aggregateComboCapabilities` gained a `resolveCaps` callback in its third position, but the two server routes still called it with their old arguments, so the recursion depth `0` landed in the callback slot and `0?.(id)` threw a `TypeError`. Both `/api/models` and `/api/v1/models` answered 500 before they could list anything. The routes now pass `null` for the resolver and the combo's own window in the last slot, and the aggregator ignores a resolver that is not a function, so a stale caller can never take the list down again.
+- **A combo reports its widest member's window again, and its own window wins**: the same merge had reverted the aggregator to `Math.min` and dropped the per-combo `contextWindow` override, so a combo built on a 1M model published 256k and clients compacted far too early. Both behaviours are restored and covered by `tests/unit/combo-capabilities.test.js`, whose four previously catalogued failures now pass (the entries were pruned from the baseline). `tests/unit/combo-caps-resolver.test.js` came in from upstream asserting the opposite window rule (minimum member), so its three window assertions were rewritten to the fork's widest-member rule with a note saying where the two disagree — the resolver cases it was really about are untouched.
+
+---
+
+# v0.5.243 (2026-10-20) · 1 commit
+
+## What Was Changed
+
+- **The three budgets are named by what they measure**: `Tokens` / `Cost` / `Requests` were just the units again, so the row title repeated the sentence underneath and said nothing a reader could not guess from the icon. They now read `Token volume`, `USD spend` and `Request count` — each name pairs the unit with the thing being counted, and the explanations below stay as they were.
+
+---
+
+# v0.5.242 (2026-10-20) · 1 commit
+
+## What Was Changed
+
+- **The limit cards stopped quoting a sample amount**: each row carried an invented example next to its name (`100,000 tokens`, `$2.50 per day`, `1,000 calls`), which read as a value the key already had rather than an illustration. The rows now hold only the unit, an icon and the sentence that explains how it is counted; the number lives in the field the row reveals.
+
+---
+
+# v0.5.241 (2026-10-20) · 1 commit
+
+## What Was Changed
+
+- **The limit picker is a list of rows instead of three narrow cards**: the key editor is a 512px column, so a three-up grid gave each card 149px and wrapped every sentence into five short lines — the copy that was meant to explain the budget became the reason the row looked crowded. Each option is now a full-width row: coloured icon chip, name and value example on one line, one sentence underneath, radio at the end. The selected row keeps the tinted plate, accent border and glow.
+
+---
+
+# v0.5.240 (2026-10-20) · 1 commit
+
+## What Was Changed
+
+- **The key editor fits the screen again**: the dialog body was capped with a magic `calc(85vh-100px)` while the header and footer added their own height on top, so a long form pushed the footer past the bottom of the window and the last permission row slid underneath it. `Modal` now caps the panel at `85vh`, lays it out as a column, and lets only the body scroll, so the footer is always reachable and no row is hidden behind it.
+- **The unselected limit cards show their radio ring**: an empty 1px `#333` circle on a `surface-2` card was invisible, so the two cards that were not chosen looked like static panels rather than options. The ring now uses `text-muted/50` and the value chips share one treatment across all three cards, differing only in opacity.
+- **Examples use one number convention**: `100K tokens` / `$2.50 / day` / `1,000 calls` became `100,000 tokens` / `$2.50 per day` / `1,000 calls`.
+- **Decorative icons are hidden from screen readers**: the material-symbols glyph text was being appended to each card's accessible name, so a radio announced itself as "data_usage Tokens Adds up prompt…".
+
+---
+
+# v0.5.239 (2026-10-20) · 1 commit
+
+## What Was Changed
+
+- **The limit picker became cards that say what the budget does, not three labelled buttons**: the tiles were icon + name, which still left the reader guessing what "Cost" meters. Each card now carries a 32px tinted icon chip, the name, a filled radio mark on the selected one, a sentence explaining the rule (`Adds up prompt and completion tokens, so a long conversation costs more than a short one.`), and a monospace example of the value it expects (`100K tokens`, `$2.50 / day`, `1,000 calls`) pinned to the bottom so the three cards align. Selection adds a coloured border plus a soft accent glow around the card rather than only changing the text colour, and the unselected cards keep their chip colour at 70% so the row reads as three budgets before anything is clicked.
+
+---
+
+# v0.5.238 (2026-10-20) · 1 commit
+
+## What Was Changed
+
+- **The three limit tiles keep their colour even when they are not selected**: at rest they were a hairline border around grey text, so the picker still read as one grey row until you clicked — the same complaint the dropdown earned. Each tile now carries its accent at 60% opacity (sky for Tokens, emerald for Cost, violet for Requests) and a faint `bg-surface-2/40` plate, so the row reads as three distinct budgets the moment the modal opens; selecting one strengthens the same accent instead of introducing a colour that was not there before.
+
+---
+
+# v0.5.237 (2026-10-20) · 1 commit
+
+## What Was Changed
+
+- **Limit Type is a three-tile picker with colour, not a dropdown**: a `<Select>` collapsed the three budgets into one line of white text and hid two thirds of the choice, which made the setting that decides *what a key is even measuring* look like the least important field in the form. `LimitKindPicker` shows all three side by side — `Tokens` (sky, volume), `Cost` (emerald, USD per day) and `Requests` (violet, calls) — each with its own icon, an uppercase sub-label saying what it counts, and a tinted background plus coloured border on the selected tile. It is a real `radiogroup` (buttons with `role="radio"` and `aria-checked`), so arrow keys and screen readers get the same three-way choice the eye does, and it stacks to one tile per row below `sm` instead of squeezing three labels into a phone-width row. Both the create and the edit modal use it; the value field and the reset interval moved into their own row underneath. `tests/unit/api-key-limit-picker.test.js` pins the three options and their distinct accents/icons, the radiogroup markup, the selected-state styling, and that no `Select label="Limit Type"` survives.
+
+---
+
+# v0.5.236 (2026-10-20) · 1 commit
+
+## What Was Changed
+
+- **The key card shows one reset badge, and it is the one that moves**: a capped key on a reset window carried two labels that said the same thing twice — `Reset: every 7d` (the setting, frozen text) next to `Next reset: 6d 23h` (the same fact as a countdown). The static one is gone; what remains is the countdown, which already ticks with `useNow` and turns into `Resetting...` when it reaches zero, so the row now answers "when does this key get its budget back" in one badge instead of restating the configured interval beside it. `tests/unit/api-key-reset-badge.test.js` keeps the static label from coming back and pins the countdown's label, its ticking and its "no window, no badge" guard.
+
+---
+
+# v0.5.235 (2026-10-20) · 1 commit
+
+## What Was Changed
+
+- **Each limit kind now explains its own rule instead of sharing a template**: the three hints opened the same way (`Counted …`) and closed with the same `the key answers 429 at the cap. 0 = unlimited.`, so Requests read like Tokens with a swapped noun — the difference a reader needs is *what gets counted and why it costs what it costs*, not the refusal code. Tokens now say they add up prompt and completion tokens across the reset window, so a long conversation costs more than a short one. Requests say they count calls and not size — one call is one request however many tokens it spends, so a huge prompt counts the same as a tiny one. Cost says every call is charged at the model's price in USD, so the same amount of text costs more on an expensive model, and the total rolls over at 00:00 UTC. The only shared sentence left is `0 = unlimited`, which is true of all three. `tests/unit/api-key-limit-hint.test.js` now also asserts the three paragraphs and their opening sentences are distinct, not merely present.
+
+---
+
+# v0.5.234 (2026-10-20) · 1 commit
+
+## What Was Changed
+
+- **The limit field explains the unit it is set to, instead of saying "0 or leave empty for unlimited"**: the field is one number whose meaning depends on `Limit Type`, and the old hint was the one sentence that carried no information about any of the three. `limitHint(kind)` now answers per kind — tokens are counted in prompt + completion tokens added up over the reset window and the key answers 429 at the cap; cost is priced per request at the model's rate, rolls over at 00:00 UTC and answers 429 at the cap; requests are counted once per logged call whichever model it hits. Every variant ends with `0 = unlimited`, so the only unit-agnostic rule survives. The token variant still appends the creator's ceiling (`Your maximum is 88,000,000 tokens`) because that is a real constraint when a sub-key is minted, and the hint is now shown in the edit modal too, which had none. Labels dropped their duplicated `(0: unlimited)` suffix — the hint states it now — so the three fields read `Token Limit`, `Cost Limit (USD)` and `Request Limit`, and the rate-limit pair reads `RPM Limit` / `TPM Limit` with `0 = unlimited` moved into their hints. `tests/unit/api-key-limit-hint.test.js` asserts each kind's sentence, the shared unlimited rule, the creator ceiling appearing on tokens only, both modals rendering the helper, and the generic line being gone.
+
+---
+
+# v0.5.233 (2026-10-20) · 1 commit
+
+## What Was Fixed
+
+- **The newest changelog entry drew a stray horizontal rule**: `CHANGELOG.md` separates versions with a `---` line, and a version's body runs until the next `# vX.Y.Z` heading, so that separator was handed to the Markdown renderer and became an `<hr>` at the bottom of the card. Only v0.5.232 showed it because Markdown reads `---` glued to the line above as a setext heading underline — every older entry swallowed its separator that way and looked fine, while the new entry, written with a blank line before the rule, rendered the line. `splitVersions()` now runs each body through `stripSectionRules()`, which drops standalone rules (leaving `---` inside fenced code alone, since an entry may quote one) and collapses the blank line the removal would leave behind. Every card now ends the same way, whether or not the file happens to have the blank line. `tests/unit/changelog-section-rules.test.js` covers the rule at the end, a rule between sections, a rule inside a fence, the splitter actually applying it, and that no version body in the real file keeps a rule.
+
+---
+
+# v0.5.232 (2026-10-20) · 1 commit
+
+## What Was Added
+
+- **The limit badge says `Usage:` whatever the unit**: `Spent: $0.00 / $2.50` read as a different kind of number from `Usage: 12K / 100K tokens`, even though both answer the same question — how much of the selected budget is gone. The unit is already inside the value (`$`, `req`, `tokens`), so the label is now always `Usage: …` and the three kinds line up in the key list.
+
+## What Was Changed
+
+- **The key editor is grouped instead of stacked**: both the create and the edit modal now split their fields into `Identity` (name, expiry), `Usage Limit` (limit type + value + reset interval), `Rate Limits` (RPM/TPM) and `Access` (allowed models, permissions), each with a short caption explaining what it controls. Fields sit two-per-row from the `sm` breakpoint up so the form is shorter, the limit pair no longer wraps awkwardly next to the reset interval, and the actions moved out of the scrolling body into the modal footer — the buttons stay reachable however long the permission list gets. The reset interval and its custom value now share a row, and the edit payload moved into `handleSaveEditedKey` so the button no longer carries a twenty-line inline object.
+
+## What Was Removed
+
+- **IP whitelist**: the field is gone from the create modal, the edit modal and bulk edit, the `IP Guard` chip is gone from the key card, and the API no longer accepts or returns `ipWhitelist`. `validateApiKey()` stopped enforcing it, together with the `IP_NOT_ALLOWED` reason in `keyGate`, the chat handler and the login route — a key cannot be edited into a state the UI cannot show. The `apiKeys.ipWhitelist` column stays so existing rows, backups and restores load unchanged, but nothing reads or writes it. **Note:** a key that was previously restricted to a list of IPs is no longer restricted by IP; revoke or re-mint it if that restriction was load-bearing.
+
+---
+
+# v0.5.231 (2026-10-20) · 1 commit
+
+## What Was Added
+
+- **One budget per key, and the operator picks which unit it is measured in**: the cost cap shipped beside the token cap, so a key could carry two budgets that both applied and switching a key to money meant zeroing the token limit by hand; nothing could limit a key by request count at all. `limitKind` now names the single budget a key is measured by — `tokens` (the default, so existing rows keep their behaviour), `cost`, or `requests`. All three numbers stay stored so switching back does not lose them, but `validateApiKey()` enforces only the selected one, which is why a stale, exhausted token cap no longer blocks a key that was switched to requests. Requests get a `usedRequests` counter written in the same transaction as the usage row and reset by the same `resetInterval` window as tokens; cost keeps its UTC-day stamp, so a new day replaces the counter without any reset job. `REQUEST_LIMIT_EXCEEDED` and `COST_LIMIT_EXCEEDED` both answer **429** through the gate rather than the `401 Invalid API key` an unknown reason falls back to. The key editor is now one "Limit Type" selector plus a single value field whose label and placeholder follow the kind (and the reset-interval picker hides for cost, which is always daily), and the key list shows one badge for the active budget — `Usage: 12K / 100K tokens`, `Spent: $0.42 / $2.50`, `Usage: 12 / 1,000 req` — that turns red at the cap. The per-key usage card measures the same kind, and backup/restore carries the kind plus all three caps. `tests/unit/api-key-cost-guard.test.js` grew to 9 tests: cost accumulation and refusal, unlimited, day rollover, request counting and refusal, a stale token cap staying ignored while requests is selected, switching kind moving the enforced budget, and the 429 mapping.
+
+---
+
+# v0.5.230 (2026-10-20) · 1 commit
+
+## What Was Added
+
+- **An API key can now be given a daily spend cap in dollars**: token, RPM and TPM limits bound volume, not money — the same token count costs a cent on `gpt-4o-mini` and dollars on a frontier model, so a key could burn any amount per day and the owner only found out on the provider invoice. Each key carries `dailyCostLimit` (USD, `0` = unlimited), a `costSpent` counter and the UTC `costDay` that counter belongs to; `saveRequestUsage()` writes the counter inside the same transaction as the usage row, and because the stamp *is* the day, a new day replaces the counter instead of needing a reset job. Counting `usageHistory` instead would have been wrong: that table is pruned, so spend would read lower than it was and the key would silently overspend. `validateApiKey()` refuses with `COST_LIMIT_EXCEEDED` once today's spend reaches the cap, which `keyGate` answers as **429** (an unrecognised reason would have fallen back to `401 Invalid API key`, blaming the credential for a budget decision). A sub-key cannot be given a larger cap than its creator, on create or on edit, and the cap survives backup/restore — an older backup that predates the column leaves the live counter intact rather than zeroing it. The key editor gained a "Daily Cost Limit in USD" field beside the RPM/TPM limits, the endpoint list shows a `Cost: $x / $y today` badge that turns red at the cap, and the per-key usage card shows spend against it. `tests/unit/api-key-cost-guard.test.js` (6 tests, real SQLite adapter) covers accumulation from a logged request, refusal at the cap, passage below it, the unlimited case, the day rollover through the usage writer, and the 429 mapping. Spec: `docs/superpowers/specs/2026-10-20-api-key-daily-cost-limit-design.md`.
+
+---
+
+# v0.5.229 (2026-10-20) · 1 commit
+
+## What Was Fixed
+
+- **`next build` no longer kills itself on the database it is writing**: `/api/auth/saml/start` had no `dynamic` export, so the build prerendered it, and prerendering calls `getSettings()` — a SQLite read issued from the build process while the prerender workers were still writing. The read came back `SqliteError: database is locked`, Next reported `Error occurred prerendering page "/api/auth/saml/start"` and the export failed, which is why a build could pass on one commit and fail on the next with no code difference between them. The route now declares `dynamic = "force-dynamic"` like the other settings-reading GETs: it reads the request cookies and redirects, so there was never anything static to render. `tests/unit/saml-start-prerender.test.js` pins both the export and the redirect behaviour.
+
+---
+
+# v0.5.228 (2026-10-20) · 1 commit
+
+## What Was Fixed
+
+- **The CI test gate now measures this checkout instead of a stale wish**: the catalogue held 24 entries from a machine whose failures no longer match reality, so the first real Linux/Node 22 run (3 856 tests) tripped on 199 uncatalogued failures and the job could never pass. `tests/__baseline__/known-fails.txt` is regenerated from that run — 213 entries across 71 files — and its header now documents how to regenerate it. `compare-fails.mjs` also accepts a `file :: (suite)` entry, because a suite that fails to load has no test name and previously could never match, which made it a permanent failure by construction. No test was deleted or skipped to get here.
+- **What the catalogue actually contains is now written down** in `CLAUDE.md` instead of the old "~938 pass, ~64 fail": 39 failures are the guard tests not resolving a `getDashboardAuthSession` export, 16 are converter snapshot drift, 7 are `UNIQUE constraint failed: combos.name` state leaking between combo tests, 13 suites fail to load, and the rest are conversion assertions. That is a backlog, not an environment quirk.
+
+---
+
+# v0.5.227 (2026-10-20) · 1 commit
+
+## What Was Fixed
+
+- **The standalone build can serve again — the auth guard had no `next/server` to import**: `next build` traces only what reaches the webpack graph, and `src/dashboardGuard.js` is copied into `.next/standalone/` *after* the build because `custom-server.js` loads it by absolute path. Its runtime `import "next/server"` was therefore never traced, so the standalone tree carried a partial `next` package and every request answered `503 guard unavailable` with `ENOENT node_modules/next/server.js`. `scripts/copy-standalone-assets.mjs` now mirrors `node_modules/next` into the standalone tree — the same thing `assemble.sh` has always done for the systemd unit — so `npm run build && npm start` and the bundle CI uploads are servable. `tests/unit/standalone-assets.test.js` covers the mirror (including that it replaces the traced directory instead of merging into it), and the CI bundle check now fails when `node_modules/next/server.js` is missing.
+- **CI's nested install no longer crashes on the runner's npm**: npm 10.9.9 aborts `npm install` inside `tests/` with `Cannot read properties of null (reading 'edgesOut')` when the directory resolves inside a project that has its own tree. The test job installs npm 12 first, which is what the local setup already runs.
+
+---
+
+# v0.5.226 (2026-10-20) · 1 commit
+
+## What Was Added
+
+- **CI builds, tests, and boots the standalone server on GitHub Actions**: `next build` does not fit in the development box's memory cap, where the peak already sits next to the limit, so every build now runs on a runner instead. `.github/workflows/ci.yml` installs the root and `tests/` dependencies (no lockfile is tracked, so `npm install` rather than `npm ci`), runs vitest, then builds and checks the standalone tree for the modules `custom-server.js` loads by absolute path (`src/dashboardGuard.js`, `src/lib/db/repos/securityLogRepo.js`, `scripts/auth-guard-hooks.mjs`). It then boots the standalone server against a temporary `DATA_DIR` and fails on anything but a `200` from `/api/health`, or on a `503` from `/login` — the guard-unavailable signature. The bundle is uploaded as an artifact, and a `workflow_dispatch` input pushes a `ghcr.io/serenhope/9router` image for hosts that only run Docker.
+- **A raw vitest exit code no longer decides the CI verdict**: the suite carries catalogued failures on a clean checkout, so `tests/__baseline__/compare-fails.mjs` compares the JSON report against `tests/__baseline__/known-fails.txt` and fails only on a failure that is not catalogued. A catalogued failure that now passes is reported as stale so the list can be pruned, an entry only counts as stale when its suite actually ran, and a suite that failed to load counts as a failure with no name instead of passing silently. `tests/unit/ci-baseline-compare.test.js` (9 tests) pins the comparison and the workflow wiring.
+
+---
+
+# v0.5.225 (2026-10-19) · 2 commits
+
+## What Was Fixed
+- Fix proxy egress falling back to direct host IP on 403 FreeTierError or proxy failures, preventing host main IP leaks to upstream abuse detection gates.
+
+---
+
+# v0.5.224 (2026-10-19) · 1 commit
+
+## What Was Fixed
+
+- **A deploy no longer leaves the browser showing the previous build**: Next marks prerendered pages `Cache-Control: s-maxage=31536000, stale-while-revalidate`, which is a CDN directive — it leaves the browser free to heuristically cache the HTML using `Last-Modified`. Rendered HTML is not content-addressed: it names the chunk hashes of the build that produced it, so a cached page from before a deploy points at files this build no longer ships and the user sees stale screens (or chunks that 404) until a hard refresh. `custom-server.js` now intercepts `setHeader` for document requests and rewrites a long-lived `s-maxage` cache-control into `public, max-age=0, must-revalidate`, so every HTML load revalidates and picks up the new chunk names. Hashed assets under `/_next/static` keep `max-age=31536000, immutable`, and API responses keep whatever Next's own `no-store` says — only the document rewrite changed. Verified on production: `/login`, `/landing` report `max-age=0, must-revalidate`, the webpack chunk still reports `immutable`, `/api/version` still reports `no-store`.
+
+# v0.5.223 (2026-10-19) · 1 commit
+
+## What Was Fixed
+
+- **The update banner no longer flashes for an API-key session**: the card had the right final guard (`if (isApiKeyUser) return null;`) but derived that flag from its own `/api/auth/status` fetch, so until the response landed it treated a key session as an admin and ran the `/api/version` poll at mount. A release sitting on the server therefore painted "Update available" for a restricted session for the length of the round trip, then vanished — visible, brief, and exactly the surface an API key with dashboard-only access is not supposed to manage. It now reads `role` and `loaded` from the session store the sidebar already resolves once for the whole shell: the duplicate status request is gone, the version poll waits for `sessionReady`, and a key session never fetches version data at all. A password session is unchanged. `tests/unit/update-banner-apikey.test.js` (4 tests) pins it; 3 fail against the previous banner.
+
+# v0.5.222 (2026-10-19) · 1 commit
+
+## What Was Fixed
+
+- **A dashboard-only API key no longer sees the whole menu while signing in**: `Sidebar` fell back to a full-admin permission object whenever `permissions` was still `null` — that is, for the whole duration of the `/api/auth/status` fetch — and every filter took the `if (!isApiKeyUser) return true` shortcut, so all admin entries rendered. On a phone connection the fetch takes long enough to read as a real grant: a key with only `viewUsage` showed Providers, Combos, Quota, CLI Tools, Plugins, Proxy Pools and Settings, and only narrowed down after the response landed. The session store already tracked `loaded`; nothing read it. The sidebar is now deny-by-default: a module-level `NO_PERMISSIONS` object replaces the all-true fallback, `sessionReady` is derived from `loaded`, and each of the four menu filters, the media accordion, the settings link and the API-key badge are gated on it, so an unresolved session renders an empty menu rather than an admin one. The settings fetch is also held until the role is known, instead of firing for a session that may turn out to be a key. A password session is unaffected — once `loaded` flips, the admin shortcut applies exactly as before. `tests/unit/sidebar-permission-gate.test.js` (7 tests) pins the behavior; it fails against the previous sidebar on all 7.
+
+# v0.5.221 (2026-10-19) · 1 commit
+
+## What Was Fixed
+
+- **Changelog categories no longer fall back to gray**: `canonicalCategory()` looked a heading up verbatim in `CATEGORY_ALIAS`, so a heading written without a trailing question mark never matched its spelled-with-punctuation sibling (`What Was Added` vs `what was added?`) and fell through to the unknown-category style — muted slate text, `help` icon, gray pill. The lookup now strips trailing `?`/`!`/`.` and probes the bare form first, so both spellings resolve to the same category and keep its real color (green for Features, amber for Fixes, and so on). `what was added` and `what was added / fixed` are also registered in the alias map, since those are the spellings this fork's own release notes use. Verified against every heading in `CHANGELOG.md`: zero gray categories remain (was 4), and the changelog self-checks pass.
+
 # v0.5.220 (2026-10-19) · 2 commits
 
 ## What Was Added
 
-- **Port upstream PR #4949 (WorkBuddy AI intl headers and conversation id family)**:
+- **WorkBuddy AI international identity headers and conversation ID family**:
   - Updated `codebuddy-intl` (`cbai`) registry to target `https://www.workbuddy.ai/v2/chat/completions` and usage endpoints, aligning UA to `WorkBuddy/5.8.4 workbuddy-ai/5.8.4 CLI/2.161.0` and adding strict identity headers (`X-IDE-Type`, `X-IDE-Version`, `X-Private-Data`, `X-Agent-Intent`, `X-Agent-Purpose`, `X-Agent-Type`, `X-Domain`).
   - Added `buildHeaders()` in `CodeBuddyIntlExecutor` generating the complete conversation ID and trace header family (`X-Conversation-ID` as UUIDv7, `X-Conversation-Request-ID`, `X-Root-Request-ID`, `X-Conversation-Message-ID`, `X-Request-ID`, `X-Trace-ID`, `traceparent`, `b3`, `X-B3-TraceId`, `X-B3-SpanId`, `X-B3-Sampled`) to eliminate `400 / code 11-128` channel verification failures (`conversation id missing`).
   - Added unit test `tests/unit/codebuddy-intl-identity-4946.test.js` (11 tests, all passing).

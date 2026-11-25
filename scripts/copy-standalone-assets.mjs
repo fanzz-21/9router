@@ -47,13 +47,28 @@ export function copyStandaloneAssets({ projectRoot = process.cwd(), distDir = pr
   // the same tree for the systemd unit; this makes the plain
   // `npm run build && npm start` (and `bun run build:bun && bun run start:bun`)
   // path work without running assemble.sh first.
-  for (const dir of ["src", "scripts"]) {
+  for (const dir of ["src", "scripts", "open-sse"]) {
     const dirSource = resolve(projectRoot, dir);
     const dirDestination = resolve(standaloneDir, dir);
     if (!existsSync(dirSource)) continue;
     rmSync(dirDestination, { recursive: true, force: true });
     cpSync(dirSource, dirDestination, { recursive: true, force: true });
     console.log(`[standalone-assets] Copied ${dir}/ to ${dirDestination}`);
+  }
+
+  // The auth guard is one of those absolutely-loaded modules, and it imports
+  // `next/server`. Output-file tracing never sees that import - it is not in the
+  // webpack graph, it is a runtime import from a file copied after the build - so
+  // the standalone tree kept only a partial `next` package and the server
+  // answered 503 "guard unavailable" with ENOENT node_modules/next/server.js.
+  // assemble.sh has always mirrored the full package for the systemd unit; the
+  // npm/bun build path needs the same tree to be servable.
+  const nextPackageSource = resolve(projectRoot, "node_modules", "next");
+  const nextPackageDestination = resolve(standaloneDir, "node_modules", "next");
+  if (existsSync(nextPackageSource)) {
+    rmSync(nextPackageDestination, { recursive: true, force: true });
+    cpSync(nextPackageSource, nextPackageDestination, { recursive: true, force: true });
+    console.log(`[standalone-assets] Mirrored the next package to ${nextPackageDestination}`);
   }
 }
 
